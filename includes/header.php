@@ -182,6 +182,12 @@ $menu_structure = [
                 'icon' => 'fab fa-cc-mastercard',
                 'url' => 'admin/mercadopago_config.php',
                 'page_key' => 'mercadopago_config'
+            ],
+            'asaas_config' => [
+                'title' => 'Asaas',
+                'icon' => 'fas fa-dollar-sign',
+                'url' => 'admin/asaas_config.php',
+                'page_key' => 'asaas_config'
             ]
         ]
     ]

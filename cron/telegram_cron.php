@@ -45,15 +45,15 @@ date_default_timezone_set('America/Sao_Paulo');
 // Precisamos detectar: /caminho/para/site/
 $base_path = $_SERVER['DOCUMENT_ROOT'] ?? dirname(__DIR__);
 
-// CORREÇÃO: Se o diretório atual não contém 'includes', ajustar caminho
-// Isso resolve problemas quando o site está em subdiretório
-if (!file_exists($base_path . '/includes/config.php')) {
-    // Tentar usar __DIR__ como base (estamos em /cron/)
-    $base_path = dirname(__FILE__, 2); // Sobe 2 níveis: cron/ -> raiz/
-    
-    // Se ainda não encontrar, usar caminho absoluto baseado no arquivo atual
-    if (!file_exists($base_path . '/includes/config.php')) {
-        // Última tentativa: usar caminho do script
+// CORREÇÃO: Remover fallbacks que sobrescrevem DOCUMENT_ROOT
+// DOCUMENT_ROOT já retorna o caminho correto em Hostgator/cPanel
+// Os fallbacks anteriores estavam causando o erro 500
+
+// Apenas para ambientes CLI ou sem DOCUMENT_ROOT
+if (!isset($_SERVER['DOCUMENT_ROOT'])) {
+    if (file_exists(dirname(__FILE__, 2) . '/includes/config.php')) {
+        $base_path = dirname(__FILE__, 2);
+    } else {
         $base_path = realpath(dirname(__FILE__) . '/..');
     }
 }

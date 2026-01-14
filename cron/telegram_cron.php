@@ -40,9 +40,10 @@
 date_default_timezone_set('America/Sao_Paulo');
 
 // Caminho base do projeto
+// CORREÇÃO: Usar DOCUMENT_ROOT como método principal (funciona em Hostgator/cPanel)
 // O script está em: /caminho/para/site/cron/telegram_cron.php
-// Precisamos voltar 1 nível para chegar na raiz: /caminho/para/site/
-$base_path = dirname(__DIR__);
+// Precisamos detectar: /caminho/para/site/
+$base_path = $_SERVER['DOCUMENT_ROOT'] ?? dirname(__DIR__);
 
 // CORREÇÃO: Se o diretório atual não contém 'includes', ajustar caminho
 // Isso resolve problemas quando o site está em subdiretório

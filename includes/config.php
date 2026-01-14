@@ -78,6 +78,20 @@ define('JWT_ALGORITHM', 'HS256');
 // Timezone
 date_default_timezone_set('America/Sao_Paulo');
 
+// ========================================
+// CONFIGURAÇÕES TELEGRAM CRON
+// ========================================
+// Chave de segurança para execução do CRON via HTTP
+// Gere uma chave aleatória forte (ex: openssl rand -hex 32)
+// Use esta chave ao configurar o CRON: telegram_cron.php?key=SUA_CHAVE
+define('TELEGRAM_CRON_KEY', 'choppon_telegram_2026_secure_key_' . md5(DB_NAME . DB_PASS));
+
+// Habilitar/desabilitar notificações automáticas
+define('TELEGRAM_NOTIFICATIONS_ENABLED', true);
+
+// Intervalo mínimo entre notificações do mesmo tipo (em horas)
+define('TELEGRAM_MIN_INTERVAL_HOURS', 6);
+
 // Iniciar sessão
 if (session_status() === PHP_SESSION_NONE) {
     session_start();

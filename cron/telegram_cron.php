@@ -8,8 +8,8 @@
  * Envia notificações automáticas via Telegram
  * 
  * @author ChopponERP Team
- * @version 2.0.0
- * @date 2026-01-12
+ * @version 2.0.1
+ * @date 2026-01-14
  * 
  * CONFIGURAÇÃO CRON (Hostgator):
  * ================================
@@ -39,23 +39,19 @@
 // Definir timezone
 date_default_timezone_set('America/Sao_Paulo');
 
-// Caminho base do projeto
-// CORREÇÃO: Usar DOCUMENT_ROOT como método principal (funciona em Hostgator/cPanel)
-// O script está em: /caminho/para/site/cron/telegram_cron.php
-// Precisamos detectar: /caminho/para/site/
-$base_path = $_SERVER['DOCUMENT_ROOT'] ?? dirname(__DIR__);
+// ========================================
+// DETECÇÃO DE CAMINHO BASE
+// ========================================
+// CORREÇÃO: Usar DOCUMENT_ROOT quando disponível (Hostgator/cPanel)
+// Caso contrário, usar caminhos relativos ao arquivo
 
-// CORREÇÃO: Remover fallbacks que sobrescrevem DOCUMENT_ROOT
-// DOCUMENT_ROOT já retorna o caminho correto em Hostgator/cPanel
-// Os fallbacks anteriores estavam causando o erro 500
-
-// Apenas para ambientes CLI ou sem DOCUMENT_ROOT
-if (!isset($_SERVER['DOCUMENT_ROOT'])) {
-    if (file_exists(dirname(__FILE__, 2) . '/includes/config.php')) {
-        $base_path = dirname(__FILE__, 2);
-    } else {
-        $base_path = realpath(dirname(__FILE__) . '/..');
-    }
+// Método 1: DOCUMENT_ROOT (funciona em Apache/Hostgator)
+if (isset($_SERVER['DOCUMENT_ROOT']) && !empty($_SERVER['DOCUMENT_ROOT'])) {
+    $base_path = $_SERVER['DOCUMENT_ROOT'];
+} 
+// Método 2: Caminho relativo ao arquivo (funciona em CLI)
+else {
+    $base_path = dirname(__DIR__);
 }
 
 // Log de debug do caminho (apenas para diagnóstico)
@@ -71,8 +67,9 @@ if (php_sapi_name() !== 'cli') {
 }
 
 // Incluir arquivos necessários
-require_once $base_path . '/includes/config.php';
-require_once $base_path . '/includes/TelegramNotifier.php';
+// Usar caminho relativo ao arquivo atual (mais confiável)
+require_once __DIR__ . '/../includes/config.php';
+require_once __DIR__ . '/../includes/TelegramNotifier.php';
 
 // ========================================
 // VALIDAÇÃO DE SEGURANÇA
@@ -148,6 +145,7 @@ function sendJsonResponse($success, $data = []) {
             $data['debug'] = $debug_info;
         }
         
+        $data['timestamp'] = date('Y-m-d H:i:s');
         echo json_encode(array_merge(['success' => $success], $data));
     }
 }
@@ -159,7 +157,7 @@ function sendJsonResponse($success, $data = []) {
 logMessage(str_repeat('=', 80));
 logMessage('INICIANDO VERIFICAÇÃO DE ALERTAS TELEGRAM');
 logMessage(str_repeat('=', 80));
-logMessage('Versão: 2.0.0');
+logMessage('Versão: 2.0.1');
 logMessage('Data/Hora: ' . date('d/m/Y H:i:s'));
 logMessage('Timezone: ' . date_default_timezone_get());
 

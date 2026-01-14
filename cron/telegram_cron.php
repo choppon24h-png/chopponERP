@@ -40,7 +40,34 @@
 date_default_timezone_set('America/Sao_Paulo');
 
 // Caminho base do projeto
+// O script está em: /caminho/para/site/cron/telegram_cron.php
+// Precisamos voltar 1 nível para chegar na raiz: /caminho/para/site/
 $base_path = dirname(__DIR__);
+
+// CORREÇÃO: Se o diretório atual não contém 'includes', ajustar caminho
+// Isso resolve problemas quando o site está em subdiretório
+if (!file_exists($base_path . '/includes/config.php')) {
+    // Tentar usar __DIR__ como base (estamos em /cron/)
+    $base_path = dirname(__FILE__, 2); // Sobe 2 níveis: cron/ -> raiz/
+    
+    // Se ainda não encontrar, usar caminho absoluto baseado no arquivo atual
+    if (!file_exists($base_path . '/includes/config.php')) {
+        // Última tentativa: usar caminho do script
+        $base_path = realpath(dirname(__FILE__) . '/..');
+    }
+}
+
+// Log de debug do caminho (apenas para diagnóstico)
+if (php_sapi_name() !== 'cli') {
+    // Se executado via HTTP, exibir caminho para debug
+    $debug_info = [
+        'script_file' => __FILE__,
+        'script_dir' => __DIR__,
+        'base_path_detected' => $base_path,
+        'config_exists' => file_exists($base_path . '/includes/config.php') ? 'YES' : 'NO',
+        'notifier_exists' => file_exists($base_path . '/includes/TelegramNotifier.php') ? 'YES' : 'NO'
+    ];
+}
 
 // Incluir arquivos necessários
 require_once $base_path . '/includes/config.php';
@@ -112,7 +139,14 @@ function logMessage($message, $level = 'INFO') {
  */
 function sendJsonResponse($success, $data = []) {
     if (php_sapi_name() !== 'cli') {
+        global $debug_info;
         header('Content-Type: application/json');
+        
+        // Adicionar info de debug se disponível
+        if (isset($debug_info)) {
+            $data['debug'] = $debug_info;
+        }
+        
         echo json_encode(array_merge(['success' => $success], $data));
     }
 }

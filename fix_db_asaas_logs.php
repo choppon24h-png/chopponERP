@@ -43,6 +43,9 @@ try {
     // Incluir configuração do banco de dados
     require_once __DIR__ . '/includes/config.php';
     
+    // Obter conexão PDO
+    $pdo = getDBConnection();
+    
     echo "<div class='step'><div class='step-title'>✅ Passo 1: Conexão com banco de dados</div>Conectado com sucesso!</div>";
     
     // Verificar se a coluna já existe

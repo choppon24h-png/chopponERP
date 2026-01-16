@@ -220,9 +220,27 @@ function processarAsaas($conn, $royalty, $estabelecimento_id) {
     error_log("[ASAAS DEBUG] Configuração encontrada: API Key = " . substr($config['asaas_api_key'], 0, 10) . "...");
     error_log("[ASAAS DEBUG] Ambiente: " . $config['ambiente']);
     
-    require_once '../includes/AsaasAPI.php';
+    // Carregar classe AsaasAPI com tratamento de erro
+    error_log("[ASAAS DEBUG] Carregando AsaasAPI.php...");
+    try {
+        require_once '../includes/AsaasAPI.php';
+        error_log("[ASAAS DEBUG] AsaasAPI.php carregado com sucesso");
+    } catch (Exception $e) {
+        error_log("[ASAAS ERROR] Erro ao carregar AsaasAPI.php: " . $e->getMessage());
+        error_log("[ASAAS ERROR] Stack: " . $e->getTraceAsString());
+        throw new Exception('Erro ao carregar classe AsaasAPI: ' . $e->getMessage());
+    }
     
-    $asaas = new AsaasAPI($conn, $estabelecimento_id);
+    // Instanciar AsaasAPI
+    error_log("[ASAAS DEBUG] Instanciando AsaasAPI...");
+    try {
+        $asaas = new AsaasAPI($conn, $estabelecimento_id);
+        error_log("[ASAAS DEBUG] AsaasAPI instanciado com sucesso");
+    } catch (Exception $e) {
+        error_log("[ASAAS ERROR] Erro ao instanciar AsaasAPI: " . $e->getMessage());
+        error_log("[ASAAS ERROR] Stack: " . $e->getTraceAsString());
+        throw new Exception('Erro ao inicializar AsaasAPI: ' . $e->getMessage());
+    }
     
     // Buscar ou criar cliente no Asaas
     // Quando royalty é criado, o cliente é o estabelecimento

@@ -202,14 +202,23 @@ function processarCora($conn, $royalty, $estabelecimento_id) {
  * Processar pagamento via Asaas
  */
 function processarAsaas($conn, $royalty, $estabelecimento_id) {
+    // LOG: Início do processamento
+    error_log("[ASAAS DEBUG] Iniciando processamento Asaas");
+    error_log("[ASAAS DEBUG] Royalty ID: " . $royalty['id']);
+    error_log("[ASAAS DEBUG] Estabelecimento ID: " . $estabelecimento_id);
+    error_log("[ASAAS DEBUG] Valor: " . $royalty['valor_royalties']);
     // Buscar configuração Asaas
     $stmt = $conn->prepare("SELECT * FROM asaas_config WHERE estabelecimento_id = ? AND ativo = 1");
     $stmt->execute([$estabelecimento_id]);
     $config = $stmt->fetch();
     
     if (!$config) {
+        error_log("[ASAAS ERROR] Configuração Asaas não encontrada para estabelecimento: " . $estabelecimento_id);
         throw new Exception('Configuração Asaas não encontrada ou inativa');
     }
+    
+    error_log("[ASAAS DEBUG] Configuração encontrada: API Key = " . substr($config['asaas_api_key'], 0, 10) . "...");
+    error_log("[ASAAS DEBUG] Ambiente: " . $config['ambiente']);
     
     require_once '../includes/AsaasAPI.php';
     
@@ -227,8 +236,13 @@ function processarAsaas($conn, $royalty, $estabelecimento_id) {
     $estabelecimento = $stmt->fetch();
     
     if (!$estabelecimento) {
+        error_log("[ASAAS ERROR] Estabelecimento não encontrado: " . $estabelecimento_id);
         throw new Exception('Estabelecimento não encontrado');
     }
+    
+    error_log("[ASAAS DEBUG] Estabelecimento encontrado: " . $estabelecimento['name']);
+    error_log("[ASAAS DEBUG] CNPJ: " . ($estabelecimento['cnpj'] ?? 'N/A'));
+    error_log("[ASAAS DEBUG] Email: " . ($estabelecimento['email'] ?? 'N/A'));
     
     // Preparar dados do cliente
     $dados_cliente = [
@@ -247,17 +261,42 @@ function processarAsaas($conn, $royalty, $estabelecimento_id) {
     ];
     
     // Buscar ou criar cliente
-    $customer_id = $asaas->buscarOuCriarCliente($estabelecimento_id, $dados_cliente);
+    error_log("[ASAAS DEBUG] Buscando ou criando cliente no Asaas...");
+    error_log("[ASAAS DEBUG] Dados cliente: " . json_encode($dados_cliente));
+    
+    try {
+        $customer_id = $asaas->buscarOuCriarCliente($estabelecimento_id, $dados_cliente);
+        error_log("[ASAAS DEBUG] Cliente criado/encontrado: " . $customer_id);
+    } catch (Exception $e) {
+        error_log("[ASAAS ERROR] Erro ao buscar/criar cliente: " . $e->getMessage());
+        throw $e;
+    }
     
     // Criar cobrança
-    $cobranca = $asaas->criarCobranca([
+    error_log("[ASAAS DEBUG] Criando cobrança no Asaas...");
+    
+    $dados_cobranca = [
         'customer_id' => $customer_id,
         'tipo_cobranca' => 'UNDEFINED', // Cliente escolhe entre Boleto, PIX ou Cartão
         'valor' => $royalty['valor_royalties'],
         'data_vencimento' => date('Y-m-d', strtotime('+7 days')),
         'descricao' => "Royalty - Período: " . date('d/m/Y', strtotime($royalty['periodo_inicial'])) . " a " . date('d/m/Y', strtotime($royalty['periodo_final'])),
         'referencia_externa' => 'ROYALTY_' . $royalty['id']
-    ]);
+    ];
+    
+    error_log("[ASAAS DEBUG] Dados cobrança: " . json_encode($dados_cobranca));
+    
+    try {
+        $cobranca = $asaas->criarCobranca($dados_cobranca);
+        error_log("[ASAAS DEBUG] Cobrança criada com sucesso!");
+        error_log("[ASAAS DEBUG] Cobrança ID: " . ($cobranca['id'] ?? 'N/A'));
+        error_log("[ASAAS DEBUG] Invoice URL: " . ($cobranca['invoiceUrl'] ?? 'N/A'));
+        error_log("[ASAAS DEBUG] Resposta completa: " . json_encode($cobranca));
+    } catch (Exception $e) {
+        error_log("[ASAAS ERROR] Erro ao criar cobrança: " . $e->getMessage());
+        error_log("[ASAAS ERROR] Stack trace: " . $e->getTraceAsString());
+        throw $e;
+    }
     
     // Atualizar royalty
     $stmt = $conn->prepare("
@@ -285,6 +324,9 @@ function processarAsaas($conn, $royalty, $estabelecimento_id) {
     $stmt->execute([$royalty['id'], $cobranca['id']]);
     
     // Redirecionar para fatura do Asaas
+    error_log("[ASAAS DEBUG] Redirecionando para: " . $cobranca['invoiceUrl']);
+    error_log("[ASAAS DEBUG] Processamento Asaas concluído com sucesso!");
+    
     header('Location: ' . $cobranca['invoiceUrl']);
     exit;
 }

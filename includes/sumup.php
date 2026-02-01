@@ -106,8 +106,9 @@ class SumUpIntegration {
         ];
         
         $response = $this->makeRequest($url, 'POST', $body);
-        
+          
         if ($response['status'] === 201 && isset($response['data']->data->client_transaction_id)) {
+       
             return [
                 'checkout_id' => $response['data']->data->client_transaction_id,
                 'response' => json_encode($response['data'])

@@ -26,6 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $volume = numberToFloat($_POST['volume']);
         $volume_critico = numberToFloat($_POST['volume_critico']);
         $android_id = sanitize($_POST['android_id']);
+        $senha = password_hash($_POST['senha'], PASSWORD_DEFAULT);
         $vencimento = $_POST['vencimento'];
         $pairing_code = sanitize($_POST['pairing_code'] ?? '');
         
@@ -36,11 +37,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         $stmt = $conn->prepare("
-            INSERT INTO tap (bebida_id, estabelecimento_id, volume, volume_consumido, volume_critico, android_id, vencimento, pairing_code, reader_id)
-            VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)
+            INSERT INTO tap (bebida_id, estabelecimento_id, volume, volume_consumido, volume_critico, android_id, senha, vencimento, pairing_code, reader_id)
+            VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
         ");
         
-        if ($stmt->execute([$bebida_id, $estabelecimento_id, $volume, $volume_critico, $android_id, $vencimento, $pairing_code, $reader_id])) {
+        if ($stmt->execute([$bebida_id, $estabelecimento_id, $volume, $volume_critico, $android_id, $senha, $vencimento, $pairing_code, $reader_id])) {
             $success = 'TAP cadastrada com sucesso!';
         } else {
             $error = 'Erro ao cadastrar TAP.';
@@ -70,13 +71,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
+        $update_fields = "bebida_id = ?, volume = ?, volume_critico = ?, vencimento = ?, status = ?, pairing_code = ?, reader_id = ?";
+        $params = [$bebida_id, $volume, $volume_critico, $vencimento, $status, $pairing_code, $reader_id];
+        
+        if (!empty($_POST['senha'])) {
+            $senha = password_hash($_POST['senha'], PASSWORD_DEFAULT);
+            $update_fields .= ", senha = ?";
+            $params[] = $senha;
+        }
+        
         $stmt = $conn->prepare("
             UPDATE tap 
-            SET bebida_id = ?, volume = ?, volume_critico = ?, vencimento = ?, status = ?, pairing_code = ?, reader_id = ?
+            SET $update_fields
             WHERE id = ?
         ");
+        $params[] = $id;
         
-        if ($stmt->execute([$bebida_id, $volume, $volume_critico, $vencimento, $status, $pairing_code, $reader_id, $id])) {
+        if ($stmt->execute($params)) {
             $success = 'TAP atualizada com sucesso!';
         } else {
             $error = 'Erro ao atualizar TAP.';
@@ -136,6 +147,7 @@ if (isAdminGeral()) {
 }
 
 require_once '../includes/header.php';
+
 ?>
 
 <div class="page-header">
@@ -162,7 +174,7 @@ require_once '../includes/header.php';
                         <?php if (isAdminGeral()): ?>
                         <th>Estabelecimento</th>
                         <?php endif; ?>
-                        <th>Android ID</th>
+                        <th>Ultimo Sinal</th>
                         <th>Volume Total</th>
                         <th>Volume Consumido</th>
                         <th>Volume Atual</th>
@@ -186,7 +198,7 @@ require_once '../includes/header.php';
                             <?php if (isAdminGeral()): ?>
                             <td><?php echo $tap['estabelecimento_name']; ?></td>
                             <?php endif; ?>
-                            <td><?php echo $tap['android_id']; ?></td>
+                            <td><?php echo $tap['last_call'] ? date("d/m/Y H:i:s",strtotime($tap['last_call'])) : ''; ?></td>
                             <td><?php echo number_format($tap['volume'], 2, ',', '.'); ?>L</td>
                             <td><?php echo number_format($tap['volume_consumido'], 2, ',', '.'); ?>L</td>
                             <td>
@@ -258,6 +270,12 @@ require_once '../includes/header.php';
                     <input type="text" name="android_id" id="android_id" class="form-control" required>
                 </div>
                 
+                <div class="form-group">
+                    <label for="senha">Senha *</label>
+                    <input type="password" name="senha" id="senha" class="form-control" required>
+                    <small id="senhaHelp" style="color: var(--gray-600);">Deixe em branco para manter a senha atual (apenas edição)</small>
+                </div>
+                
                 <div class="row">
                     <div class="col-md-6">
                         <div class="form-group">
@@ -315,6 +333,8 @@ function editTap(tap) {
     document.getElementById('pairing_code').value = tap.pairing_code || '';
     document.getElementById('status').checked = tap.status == 1;
     document.getElementById('statusGroup').style.display = 'block';
+    document.getElementById('senha').required = false;
+    document.getElementById('senhaHelp').style.display = 'block';
     
     openModal('modalTap');
 }
@@ -326,6 +346,8 @@ document.querySelector('[onclick="openModal(\'modalTap\')"]').addEventListener('
     document.getElementById('formTap').reset();
     document.getElementById('android_id').readOnly = false;
     document.getElementById('statusGroup').style.display = 'none';
+    document.getElementById('senha').required = true;
+    document.getElementById('senhaHelp').style.display = 'none';
 });
 </script>
 JS;

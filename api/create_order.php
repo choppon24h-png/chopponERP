@@ -74,7 +74,7 @@ $stmt_estab = $conn->prepare("
 ");
 $stmt_estab->execute([$tap['bebida_id'], $tap['estabelecimento_id']]);
 $estab_data = $stmt_estab->fetch(PDO::FETCH_ASSOC);
-
+/*
 if ($estab_data && $estab_data['notificar_vendas'] && !empty($estab_data['email_alerta'])) {
     $order_info = [
         'estabelecimento_nome' => $estab_data['estabelecimento_nome'],
@@ -85,14 +85,14 @@ if ($estab_data && $estab_data['notificar_vendas'] && !empty($estab_data['email_
         'cpf' => $input['cpf']
     ];
     
-  /*  $email_sender = new EmailSender($conn);
+    $email_sender = new EmailSender($conn);
     $subject = "Nova Venda Registrada - {$estab_data['estabelecimento_nome']}";
     $body = EmailSender::formatVendaBody($order_info);
     
-    $email_sender->sendAlert($tap['estabelecimento_id'], $subject, $body, 'venda');*/
+    $email_sender->sendAlert($tap['estabelecimento_id'], $subject, $body, 'venda');
 }
 // --- Fim Alerta de Venda por E-mail ---
-
+*/
 // Processar pagamento via SumUp
 $sumup = new SumUpIntegration();
 

@@ -164,3 +164,14 @@
 [12-Jan-2026 00:18:11 America/Sao_Paulo] [ROYALTIES] Erro ao listar faturamentos
 [12-Jan-2026 00:18:15 America/Sao_Paulo] [ROYALTIES] Erro ao listar faturamentos
 [12-Jan-2026 00:18:23 America/Sao_Paulo] [ROYALTIES] Erro ao listar faturamentos
+[16-Jan-2026 12:46:04 America/Sao_Paulo] PHP Warning:  Undefined array key "descricao_cobranca" in /home2/inlaud99/ochoppoficial.com.br/admin/royalty_selecionar_pagamento.php on line 93
+[16-Jan-2026 12:46:07 America/Sao_Paulo] [ASAAS DEBUG] Iniciando processamento Asaas
+[16-Jan-2026 12:46:07 America/Sao_Paulo] [ASAAS DEBUG] Royalty ID: 33
+[16-Jan-2026 12:46:07 America/Sao_Paulo] [ASAAS DEBUG] Estabelecimento ID: 1
+[16-Jan-2026 12:46:07 America/Sao_Paulo] [ASAAS DEBUG] Valor: 494.98
+[16-Jan-2026 12:46:07 America/Sao_Paulo] [ASAAS DEBUG] Configuração encontrada: API Key = $aact_hmlg...
+[16-Jan-2026 12:46:07 America/Sao_Paulo] [ASAAS DEBUG] Ambiente: sandbox
+[16-Jan-2026 12:46:07 America/Sao_Paulo] [ASAAS DEBUG] Carregando AsaasAPI.php...
+[16-Jan-2026 12:46:07 America/Sao_Paulo] [ASAAS DEBUG] AsaasAPI.php carregado com sucesso
+[16-Jan-2026 12:46:07 America/Sao_Paulo] [ASAAS DEBUG] Instanciando AsaasAPI...
+[16-Jan-2026 12:46:07 America/Sao_Paulo] [ASAAS DEBUG] AsaasAPI instanciado com sucesso

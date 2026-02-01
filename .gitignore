@@ -1,0 +1,36 @@
+# Arquivos de ambiente
+.env
+cora_config_v2.php
+
+# Logs
+logs/*.log
+error_log
+
+# Uploads
+uploads/*
+!uploads/.gitkeep
+
+# Cache
+cache/*
+!cache/.gitkeep
+
+# Dependências
+vendor/
+node_modules/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Backups
+*.bak
+*.backup
+*_backup.php
+bck/

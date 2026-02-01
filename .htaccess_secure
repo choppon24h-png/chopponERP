@@ -1,0 +1,200 @@
+# =====================================================
+# .htaccess - Configurações de Segurança
+# CHOPPONv1 v3.1.0
+# =====================================================
+
+# =====================================================
+# Headers de Segurança
+# =====================================================
+<IfModule mod_headers.c>
+    # Prevenir clickjacking
+    Header always set X-Frame-Options "DENY"
+    
+    # Prevenir MIME sniffing
+    Header always set X-Content-Type-Options "nosniff"
+    
+    # XSS Protection
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # Referrer Policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    
+    # Content Security Policy
+    # Ajuste conforme necessário para seu site
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self';"
+    
+    # HSTS (HTTP Strict Transport Security)
+    # Descomente apenas se usar HTTPS
+    # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    
+    # Permissions Policy (Feature Policy)
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+</IfModule>
+
+# =====================================================
+# Proteger Arquivos Sensíveis
+# =====================================================
+
+# Bloquear acesso ao .env
+<FilesMatch "^\.env">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Bloquear acesso ao .git
+<FilesMatch "^\.git">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Bloquear acesso a arquivos de configuração
+<FilesMatch "\.(ini|conf|config|bak|backup|sql|md)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Bloquear acesso a logs
+<FilesMatch "\.log$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# =====================================================
+# Desabilitar Listagem de Diretórios
+# =====================================================
+Options -Indexes
+
+# =====================================================
+# Proteger contra Injeção de Código
+# =====================================================
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Bloquear tentativas de XSS via query string
+    RewriteCond %{QUERY_STRING} (<|%3C).*script.*(>|%3E) [NC,OR]
+    RewriteCond %{QUERY_STRING} GLOBALS(=|[|%[0-9A-Z]{0,2}) [OR]
+    RewriteCond %{QUERY_STRING} _REQUEST(=|[|%[0-9A-Z]{0,2})
+    RewriteRule ^(.*)$ index.php [F,L]
+    
+    # Bloquear tentativas de SQL injection
+    RewriteCond %{QUERY_STRING} (union.*select|insert.*into|delete.*from|drop.*table) [NC]
+    RewriteRule ^(.*)$ index.php [F,L]
+    
+    # Bloquear tentativas de file inclusion
+    RewriteCond %{QUERY_STRING} \.\.\/ [NC,OR]
+    RewriteCond %{QUERY_STRING} boot\.ini [NC,OR]
+    RewriteCond %{QUERY_STRING} etc/passwd [NC,OR]
+    RewriteCond %{QUERY_STRING} self/environ [NC]
+    RewriteRule ^(.*)$ index.php [F,L]
+    
+    # Bloquear user agents maliciosos
+    RewriteCond %{HTTP_USER_AGENT} ^$ [OR]
+    RewriteCond %{HTTP_USER_AGENT} ^(-|curl|wget|python|nikto|scan) [NC]
+    RewriteRule ^(.*)$ - [F,L]
+</IfModule>
+
+# =====================================================
+# Limitar Tamanho de Upload
+# =====================================================
+php_value upload_max_filesize 10M
+php_value post_max_size 10M
+php_value max_execution_time 300
+php_value max_input_time 300
+
+# =====================================================
+# Desabilitar Exposição de Informações do PHP
+# =====================================================
+php_flag display_errors Off
+php_flag display_startup_errors Off
+php_value error_reporting 0
+php_flag expose_php Off
+
+# =====================================================
+# Configurar Sessões Seguras
+# =====================================================
+php_flag session.cookie_httponly On
+php_flag session.cookie_secure On
+php_value session.cookie_samesite Strict
+php_flag session.use_strict_mode On
+php_flag session.use_only_cookies On
+
+# =====================================================
+# Compressão GZIP
+# =====================================================
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
+
+# =====================================================
+# Cache de Arquivos Estáticos
+# =====================================================
+<IfModule mod_expires.c>
+    ExpiresActive On
+    
+    # Imagens
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    
+    # CSS e JavaScript
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    
+    # Fontes
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType font/ttf "access plus 1 year"
+    
+    # HTML
+    ExpiresByType text/html "access plus 0 seconds"
+</IfModule>
+
+# =====================================================
+# Forçar HTTPS (Descomente se usar SSL)
+# =====================================================
+# <IfModule mod_rewrite.c>
+#     RewriteEngine On
+#     RewriteCond %{HTTPS} off
+#     RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+# </IfModule>
+
+# =====================================================
+# Prevenir Hotlinking de Imagens
+# =====================================================
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTP_REFERER} !^$
+    RewriteCond %{HTTP_REFERER} !^https?://(www\.)?seudominio\.com\.br [NC]
+    RewriteRule \.(jpg|jpeg|png|gif|webp)$ - [F,NC]
+</IfModule>
+
+# =====================================================
+# Proteção contra DDoS Básica
+# =====================================================
+<IfModule mod_evasive.c>
+    DOSHashTableSize 3097
+    DOSPageCount 10
+    DOSSiteCount 100
+    DOSPageInterval 1
+    DOSSiteInterval 1
+    DOSBlockingPeriod 10
+</IfModule>
+
+# =====================================================
+# Configurações Adicionais de Segurança
+# =====================================================
+
+# Desabilitar assinatura do servidor
+ServerSignature Off
+
+# Limitar métodos HTTP permitidos
+<LimitExcept GET POST>
+    Order deny,allow
+    Deny from all
+</LimitExcept>
+
+# =====================================================
+# Fim do arquivo .htaccess
+# =====================================================

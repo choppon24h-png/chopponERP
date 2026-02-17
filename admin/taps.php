@@ -26,6 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $volume = numberToFloat($_POST['volume']);
         $volume_critico = numberToFloat($_POST['volume_critico']);
         $android_id = sanitize($_POST['android_id']);
+        $mac_id = sanitize($_POST['MAC_ID'] ?? '');
         $senha = password_hash($_POST['senha'], PASSWORD_DEFAULT);
         $vencimento = $_POST['vencimento'];
         $pairing_code = sanitize($_POST['pairing_code'] ?? '');
@@ -37,11 +38,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         $stmt = $conn->prepare("
-            INSERT INTO tap (bebida_id, estabelecimento_id, volume, volume_consumido, volume_critico, android_id, senha, vencimento, pairing_code, reader_id)
-            VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tap (bebida_id, estabelecimento_id, volume, volume_consumido, volume_critico, android_id, esp32_mac, senha, vencimento, pairing_code, reader_id)
+            VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
         ");
         
-        if ($stmt->execute([$bebida_id, $estabelecimento_id, $volume, $volume_critico, $android_id, $senha, $vencimento, $pairing_code, $reader_id])) {
+        if ($stmt->execute([$bebida_id, $estabelecimento_id, $volume, $volume_critico, $android_id, $mac_id, $senha, $vencimento, $pairing_code, $reader_id])) {
             $success = 'TAP cadastrada com sucesso!';
         } else {
             $error = 'Erro ao cadastrar TAP.';
@@ -54,6 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $volume = numberToFloat($_POST['volume']);
         $volume_critico = numberToFloat($_POST['volume_critico']);
         $vencimento = $_POST['vencimento'];
+        $mac_id = sanitize($_POST['MAC_ID'] ?? '');
         $status = isset($_POST['status']) ? 1 : 0;
         $pairing_code = sanitize($_POST['pairing_code'] ?? '');
         
@@ -71,8 +73,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
-        $update_fields = "bebida_id = ?, volume = ?, volume_critico = ?, vencimento = ?, status = ?, pairing_code = ?, reader_id = ?";
-        $params = [$bebida_id, $volume, $volume_critico, $vencimento, $status, $pairing_code, $reader_id];
+        $update_fields = "bebida_id = ?, volume = ?, volume_critico = ?, vencimento = ?, esp32_mac = ?, status = ?, pairing_code = ?, reader_id = ?";
+        $params = [$bebida_id, $volume, $volume_critico, $vencimento, $mac_id, $status, $pairing_code, $reader_id];
         
         if (!empty($_POST['senha'])) {
             $senha = password_hash($_POST['senha'], PASSWORD_DEFAULT);
@@ -271,6 +273,11 @@ require_once '../includes/header.php';
                 </div>
                 
                 <div class="form-group">
+                    <label for="MAC_ID">MAC ID</label>
+                    <input type="text" name="MAC_ID" id="MAC_ID" class="form-control">
+                </div>
+                
+                <div class="form-group">
                     <label for="senha">Senha *</label>
                     <input type="password" name="senha" id="senha" class="form-control" required>
                     <small id="senhaHelp" style="color: var(--gray-600);">Deixe em branco para manter a senha atual (apenas edição)</small>
@@ -327,6 +334,7 @@ function editTap(tap) {
     document.getElementById('bebida_id').value = tap.bebida_id;
     document.getElementById('android_id').value = tap.android_id;
     document.getElementById('android_id').readOnly = true;
+    document.getElementById('MAC_ID').value = tap.esp32_mac || '';
     document.getElementById('volume').value = tap.volume;
     document.getElementById('volume_critico').value = tap.volume_critico;
     document.getElementById('vencimento').value = tap.vencimento;

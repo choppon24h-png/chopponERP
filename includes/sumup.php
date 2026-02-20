@@ -88,34 +88,71 @@ class SumUpIntegration {
     }
     
     /**
-     * Cria checkout para cartão
+     * Cria checkout para cartao
+     *
+     * CORRECAO 1: valor enviado como INTEGER em centavos (SumUp exige integer, nao string)
+     *   Antes: number_format($valor, 2, '', '') -> retornava STRING '200'
+     *   Agora:  intval(round(floatval($valor) * 100)) -> retorna INTEGER 200
+     *
+     * CORRECAO 2: retorna array com erro detalhado (READER_OFFLINE, READER_BUSY, etc.)
+     *   ao inves de simplesmente false, permitindo mensagem especifica ao usuario
      */
     public function createCheckoutCard($order_data, $reader_id, $card_type = 'credit') {
         $url = $this->merchant_url . '/readers/' . $reader_id . '/checkout';
         
+        // Converter valor para INTEGER em centavos
+        $valor_centavos = intval(round(floatval($order_data['valor']) * 100));
+        
         $body = [
             'total_amount' => [
-                'value' => number_format($order_data['valor'], 2, '', ''),
-                'currency' => 'BRL',
+                'value'      => $valor_centavos,
+                'currency'   => 'BRL',
                 'minor_unit' => 2
             ],
             'installments' => 1,
-            'description' => $order_data['descricao'],
-            'card_type' => $card_type,
-            'return_url' => SITE_URL . '/api/webhook.php'
+            'description'  => $order_data['descricao'],
+            'card_type'    => $card_type,
+            'return_url'   => SITE_URL . '/api/webhook.php'
         ];
         
         $response = $this->makeRequest($url, 'POST', $body);
-          
+        
         if ($response['status'] === 201 && isset($response['data']->data->client_transaction_id)) {
-       
             return [
                 'checkout_id' => $response['data']->data->client_transaction_id,
-                'response' => json_encode($response['data'])
+                'response'    => json_encode($response['data'])
             ];
         }
         
-        return false;
+        // Retornar erro detalhado da SumUp ao inves de false
+        $error_type   = $response['data']->errors->type   ?? 'UNKNOWN_ERROR';
+        $error_detail = $response['data']->errors->detail ?? 'Erro desconhecido';
+        
+        $error_messages = [
+            'READER_OFFLINE'   => 'Leitor de cartao esta desligado ou sem conexao. Verifique se o SumUp Solo esta ligado e conectado.',
+            'READER_BUSY'      => 'Leitor de cartao esta ocupado com outra transacao. Aguarde ou cancele a transacao anterior.',
+            'READER_NOT_FOUND' => 'Leitor de cartao nao encontrado. Verifique a configuracao da TAP no painel administrativo.',
+            'UNAUTHORIZED'     => 'Token SumUp invalido ou expirado. Verifique as configuracoes de pagamento.',
+        ];
+        
+        $error_msg_pt = $error_messages[$error_type] ?? $error_detail;
+        
+        Logger::error("SumUp createCheckoutCard - Falha", [
+            'error_type'   => $error_type,
+            'error_detail' => $error_detail,
+            'reader_id'    => $reader_id,
+            'status_http'  => $response['status'],
+            'raw_response' => $response['raw_response']
+        ]);
+        
+        return [
+            'success'      => false,
+            'error_type'   => $error_type,
+            'error_detail' => $error_detail,
+            'error_msg_pt' => $error_msg_pt,
+            'raw_response' => $response['raw_response'],
+            'curl_error'   => $response['curl_error']
+        ];
     }
     
     /**
@@ -153,6 +190,10 @@ class SumUpIntegration {
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+        
+        // CORRECAO: timeout para evitar travamento quando reader esta offline
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         
         if ($data !== null && ($method === 'POST' || $method === 'PUT')) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));

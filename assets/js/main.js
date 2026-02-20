@@ -67,6 +67,9 @@ function formatCurrency(input) {
 }
 
 // Auto-aplicar formatação em campos de moeda
+// DESABILITADO: Conflita com input type="number" em bebidas.php
+// Use input type="number" com step="0.01" para campos monetários
+/*
 document.addEventListener('DOMContentLoaded', function() {
     const currencyInputs = document.querySelectorAll('input[name="valor"], input[name="taxa_fixa"]');
     currencyInputs.forEach(input => {
@@ -75,6 +78,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+*/
 
 // ========================================
 // Formatação de Percentual

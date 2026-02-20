@@ -281,13 +281,13 @@ require_once '../includes/header.php';
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="value">Valor (R$) *</label>
-                            <input type="text" name="value" id="value" class="form-control" required>
+                            <input type="number" name="value" id="value" class="form-control" step="0.01" min="0" required placeholder="Ex: 25.50">
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="promotional_value">Valor Promocional (R$) *</label>
-                            <input type="text" name="promotional_value" id="promotional_value" class="form-control" required>
+                            <input type="number" name="promotional_value" id="promotional_value" class="form-control" step="0.01" min="0" required placeholder="Ex: 20.00">
                         </div>
                     </div>
                 </div>

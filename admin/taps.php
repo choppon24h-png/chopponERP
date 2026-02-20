@@ -58,19 +58,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $mac_id = sanitize($_POST['MAC_ID'] ?? '');
         $status = isset($_POST['status']) ? 1 : 0;
         $pairing_code = sanitize($_POST['pairing_code'] ?? '');
+        $reader_id_direto = sanitize($_POST['reader_id_direto'] ?? '');
         
-        // Verificar se pairing_code mudou
+        // Buscar dados atuais da TAP
         $stmt = $conn->prepare("SELECT pairing_code, reader_id FROM tap WHERE id = ?");
         $stmt->execute([$id]);
         $tap_atual = $stmt->fetch();
         
-        $reader_id = $tap_atual['reader_id'];
-        if (!empty($pairing_code) && $pairing_code !== $tap_atual['pairing_code']) {
+        // Prioridade: reader_id_direto (selecionado no dropdown) > pairing_code (campo legado)
+        if (!empty($reader_id_direto)) {
+            // Reader selecionado diretamente pelo dropdown — usar sem chamar addReader()
+            $reader_id = $reader_id_direto;
+            // Manter pairing_code como o nome do reader (enviado pelo JS)
+        } elseif (!empty($pairing_code) && $pairing_code !== $tap_atual['pairing_code']) {
+            // Fluxo legado: pairing_code mudou, chamar addReader()
             $sumup = new SumUpIntegration();
             $new_reader_id = $sumup->addReader($pairing_code);
-            if ($new_reader_id) {
-                $reader_id = $new_reader_id;
-            }
+            $reader_id = $new_reader_id ?: $tap_atual['reader_id'];
+        } else {
+            $reader_id = $tap_atual['reader_id'];
         }
         
         $update_fields = "bebida_id = ?, volume = ?, volume_critico = ?, vencimento = ?, esp32_mac = ?, status = ?, pairing_code = ?, reader_id = ?";
@@ -304,9 +310,17 @@ require_once '../includes/header.php';
                 </div>
                 
                 <div class="form-group">
-                    <label for="pairing_code">Código de Pareamento SumUp</label>
-                    <input type="text" name="pairing_code" id="pairing_code" class="form-control" placeholder="Opcional">
-                    <small style="color: var(--gray-600);">Deixe em branco se não usar leitora de cartão</small>
+                    <label for="reader_select">Leitora SumUp Solo</label>
+                    <!-- Campo oculto que guarda o reader_id selecionado pelo dropdown -->
+                    <input type="hidden" name="reader_id_direto" id="reader_id_direto">
+                    <!-- Campo oculto para pairing_code (nome do reader, mantém compatibilidade) -->
+                    <input type="hidden" name="pairing_code" id="pairing_code">
+                    <select id="reader_select" class="form-control" onchange="onReaderChange(this)">
+                        <option value="">⏳ Carregando leitoras...</option>
+                    </select>
+                    <small id="reader_status_info" style="color: var(--gray-600); margin-top:4px; display:block;">
+                        Selecione a leitora SumUp Solo vinculada a esta TAP
+                    </small>
                 </div>
                 
                 <div class="form-group" id="statusGroup" style="display: none;">
@@ -344,7 +358,12 @@ function editTap(tap) {
     document.getElementById('senha').required = false;
     document.getElementById('senhaHelp').style.display = 'block';
     
+    // Guardar reader_id atual e aguardar carregamento do dropdown
+    document.getElementById('reader_id_direto').value = tap.reader_id || '';
+    waitAndSelectReader(tap.reader_id, tap.pairing_code);
+    
     openModal('modalTap');
+    loadSumupReaders();
 }
 
 // Reset form ao abrir modal para nova TAP
@@ -356,7 +375,93 @@ document.querySelector('[onclick="openModal(\'modalTap\')"]').addEventListener('
     document.getElementById('statusGroup').style.display = 'none';
     document.getElementById('senha').required = true;
     document.getElementById('senhaHelp').style.display = 'none';
+    document.getElementById('reader_id_direto').value = '';
+    document.getElementById('pairing_code').value = '';
+    loadSumupReaders();
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gerenciamento de Readers SumUp
+// ─────────────────────────────────────────────────────────────────────────────
+let sumupReadersCache = null;
+
+async function loadSumupReaders() {
+    const sel = document.getElementById('reader_select');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">⏳ Carregando leitoras...</option>';
+    try {
+        const resp = await fetch('/api/list_readers.php');
+        const data = await resp.json();
+        sumupReadersCache = data.readers || [];
+        populateReaderSelect(sel, sumupReadersCache);
+    } catch (e) {
+        sel.innerHTML = '<option value="">⚠️ Erro ao carregar leitoras. Verifique o token SumUp.</option>';
+    }
+}
+
+function populateReaderSelect(sel, readers) {
+    sel.innerHTML = '<option value="">-- Nenhuma leitora --</option>';
+    readers.forEach(function(r) {
+        const icon  = r.status === 'ONLINE' ? '🟢' : '🔴';
+        const bat   = r.battery ? ' 🔋' + r.battery : '';
+        const conn  = r.connection ? ' (' + r.connection + ')' : '';
+        const opt   = document.createElement('option');
+        opt.value   = r.reader_id;
+        opt.text    = icon + ' ' + r.name + ' | Serial: ' + (r.serial || 'N/A') + bat + conn;
+        opt.dataset.name   = r.name;
+        opt.dataset.serial = r.serial || '';
+        opt.dataset.status = r.status;
+        sel.appendChild(opt);
+    });
+    // Restaurar seleção salva
+    const saved = document.getElementById('reader_id_direto').value;
+    if (saved) sel.value = saved;
+    updateReaderStatusInfo(sel);
+}
+
+function onReaderChange(sel) {
+    const opt = sel.options[sel.selectedIndex];
+    document.getElementById('reader_id_direto').value = sel.value || '';
+    document.getElementById('pairing_code').value = (opt && opt.dataset.name) ? opt.dataset.name : '';
+    updateReaderStatusInfo(sel);
+}
+
+function updateReaderStatusInfo(sel) {
+    const info = document.getElementById('reader_status_info');
+    if (!info) return;
+    const opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) {
+        info.textContent = 'Selecione a leitora SumUp Solo vinculada a esta TAP';
+        info.style.color = 'var(--gray-600)';
+        return;
+    }
+    const status = opt.dataset.status;
+    const serial = opt.dataset.serial;
+    if (status === 'ONLINE') {
+        info.textContent = '✅ Leitora ONLINE | Serial: ' + serial + ' — Pronta para receber pagamentos';
+        info.style.color = '#28a745';
+    } else {
+        info.textContent = '⚠️ Leitora OFFLINE | Serial: ' + serial + ' — Ligue o dispositivo SumUp Solo';
+        info.style.color = '#dc3545';
+    }
+}
+
+function waitAndSelectReader(readerId, pairingCode) {
+    if (!readerId && !pairingCode) return;
+    const trySelect = function() {
+        const sel = document.getElementById('reader_select');
+        if (!sel || sel.options.length <= 1) {
+            setTimeout(trySelect, 200);
+            return;
+        }
+        if (readerId) {
+            sel.value = readerId;
+            document.getElementById('reader_id_direto').value = readerId;
+        }
+        updateReaderStatusInfo(sel);
+    };
+    setTimeout(trySelect, 150);
+}
 </script>
 JS;
 

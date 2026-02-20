@@ -3,11 +3,13 @@
  * API - Status da Leitora de Cartão SumUp
  * POST /api/reader_status.php
  *
- * Retorna o status da leitora SumUp vinculada ao android_id informado:
- * - nome da leitora (pairing_code do banco + nome SumUp)
- * - reader_id e serial do dispositivo físico
- * - status: online | offline | sem_leitora | nao_encontrada
- * - api_ativa: true | false (valida o token SumUp via /me)
+ * Retorna o status da leitora SumUp vinculada ao android_id informado.
+ * Usa o endpoint oficial GET /readers/{id}/status da SumUp para obter:
+ * - status: ONLINE | OFFLINE
+ * - state: IDLE | BUSY | etc.
+ * - battery_level, connection_type, firmware_version, last_activity
+ *
+ * Não cria checkouts de teste — diagnóstico limpo e preciso.
  */
 
 header('Content-Type: application/json');
@@ -46,20 +48,24 @@ if (!$tap || empty($tap['reader_id'])) {
         'serial'         => null,
         'status_leitora' => 'sem_leitora',
         'api_ativa'      => false,
+        'bateria'        => null,
+        'conexao'        => null,
+        'firmware'       => null,
+        'ultima_atividade' => null,
         'mensagem'       => 'Nenhuma leitora de cartão vinculada a esta TAP. Configure o pairing_code no painel administrativo.'
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-$reader_id    = $tap['reader_id'];
-$pairing_code = $tap['pairing_code'] ?? 'Desconhecido';
+$reader_id     = $tap['reader_id'];
+$pairing_code  = $tap['pairing_code'] ?? 'Desconhecido';
+$merchant_code = SUMUP_MERCHANT_CODE;
 
 // Buscar configuração SumUp (token)
 $stmt2 = $conn->prepare("SELECT token_sumup FROM payment_config LIMIT 1");
 $stmt2->execute();
 $payment = $stmt2->fetch(PDO::FETCH_ASSOC);
 $sumup_token = $payment['token_sumup'] ?? SUMUP_TOKEN;
-$merchant_code = SUMUP_MERCHANT_CODE;
 
 // ─────────────────────────────────────────────────────────────
 // 1. Verificar se a API SumUp está ativa (valida o token)
@@ -80,10 +86,10 @@ if ($http_api === 200) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 2. Buscar detalhes do reader na SumUp (nome e serial)
+// 2. Buscar detalhes do reader (nome e serial) via GET /readers/{id}
 // ─────────────────────────────────────────────────────────────
-$reader_nome_sumup = $pairing_code;
-$reader_serial     = null;
+$reader_nome   = $pairing_code;
+$reader_serial = null;
 
 $ch_info = curl_init();
 curl_setopt($ch_info, CURLOPT_URL, "https://api.sumup.com/v0.1/merchants/{$merchant_code}/readers/{$reader_id}");
@@ -96,104 +102,95 @@ $http_info  = curl_getinfo($ch_info, CURLINFO_HTTP_CODE);
 curl_close($ch_info);
 
 if ($http_info === 200) {
-    $reader_data = json_decode($resp_info, true);
-    $reader_nome_sumup = $reader_data['name']                     ?? $pairing_code;
-    $reader_serial     = $reader_data['device']['identifier']     ?? null;
+    $reader_data   = json_decode($resp_info, true);
+    $reader_nome   = $reader_data['name']                 ?? $pairing_code;
+    $reader_serial = $reader_data['device']['identifier'] ?? null;
 }
 
 // ─────────────────────────────────────────────────────────────
-// 3. Verificar status online/offline via checkout de teste
-//    A SumUp não tem endpoint de "ping" direto.
-//    Tentamos criar um checkout mínimo e analisamos o erro:
-//    - HTTP 201 = ONLINE (checkout criado, cancelamos imediatamente)
-//    - READER_BUSY = ONLINE (ocupado com outra transação)
-//    - READER_OFFLINE = OFFLINE
-//    - READER_NOT_FOUND = não encontrado
+// 3. Verificar status real do reader via GET /readers/{id}/status
+//    Endpoint oficial da SumUp que retorna:
+//    - status: ONLINE | OFFLINE
+//    - state: IDLE | BUSY | null
+//    - battery_level, connection_type, firmware_version, last_activity
 // ─────────────────────────────────────────────────────────────
-$status_leitora  = 'offline';
-$mensagem_status = 'Leitora desligada ou sem conexão.';
+$status_leitora   = 'offline';
+$mensagem_status  = 'Leitora desligada ou sem conexão com a SumUp.';
+$bateria          = null;
+$conexao          = null;
+$firmware         = null;
+$ultima_atividade = null;
 
-$ch_reader = curl_init();
-curl_setopt($ch_reader, CURLOPT_URL, "https://api.sumup.com/v0.1/merchants/{$merchant_code}/readers/{$reader_id}/checkout");
-curl_setopt($ch_reader, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch_reader, CURLOPT_CUSTOMREQUEST, 'POST');
-curl_setopt($ch_reader, CURLOPT_HTTPHEADER, [
-    'Authorization: Bearer ' . $sumup_token,
-    'Content-Type: application/json'
-]);
-$payload = json_encode([
-    'total_amount' => ['value' => 1, 'currency' => 'BRL', 'minor_unit' => 2],
-    'description'  => 'PING_STATUS_CHECK',
-    'card_type'    => 'debit',
-    'return_url'   => 'https://ochoppoficial.com.br/api/webhook.php'
-]);
-curl_setopt($ch_reader, CURLOPT_POSTFIELDS, $payload);
-curl_setopt($ch_reader, CURLOPT_CONNECTTIMEOUT, 8);
-curl_setopt($ch_reader, CURLOPT_TIMEOUT, 12);
-$resp_reader = curl_exec($ch_reader);
-$http_reader  = curl_getinfo($ch_reader, CURLINFO_HTTP_CODE);
-curl_close($ch_reader);
+$ch_status = curl_init();
+curl_setopt($ch_status, CURLOPT_URL, "https://api.sumup.com/v0.1/merchants/{$merchant_code}/readers/{$reader_id}/status");
+curl_setopt($ch_status, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch_status, CURLOPT_HTTPHEADER, ['Authorization: Bearer ' . $sumup_token]);
+curl_setopt($ch_status, CURLOPT_CONNECTTIMEOUT, 8);
+curl_setopt($ch_status, CURLOPT_TIMEOUT, 12);
+$resp_status = curl_exec($ch_status);
+$http_status  = curl_getinfo($ch_status, CURLINFO_HTTP_CODE);
+curl_close($ch_status);
 
-$resp_json  = json_decode($resp_reader, true);
-$error_type = $resp_json['errors']['type'] ?? '';
+if ($http_status === 200) {
+    $status_data = json_decode($resp_status, true);
+    $data        = $status_data['data'] ?? [];
 
-if ($http_reader === 201) {
-    // Checkout criado com sucesso = reader ONLINE
-    $status_leitora  = 'online';
-    $mensagem_status = 'Leitora online e pronta para uso.';
+    $sumup_status = strtoupper($data['status'] ?? 'OFFLINE');
+    $sumup_state  = $data['state'] ?? null;
+    $bateria      = $data['battery_level'] ?? null;
+    $conexao      = $data['connection_type'] ?? null;
+    $firmware     = $data['firmware_version'] ?? null;
+    $ultima_atividade = $data['last_activity'] ?? null;
 
-    // Cancelar imediatamente o checkout de teste via terminate
-    // (não precisa do client_transaction_id — terminate cancela qualquer checkout pendente)
-    $ch_cancel = curl_init();
-    curl_setopt($ch_cancel, CURLOPT_URL, "https://api.sumup.com/v0.1/merchants/{$merchant_code}/readers/{$reader_id}/terminate");
-    curl_setopt($ch_cancel, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch_cancel, CURLOPT_CUSTOMREQUEST, 'POST');
-    curl_setopt($ch_cancel, CURLOPT_HTTPHEADER, [
-        'Authorization: Bearer ' . $sumup_token,
-        'Content-Type: application/json'
-    ]);
-    curl_setopt($ch_cancel, CURLOPT_POSTFIELDS, '{}');
-    curl_setopt($ch_cancel, CURLOPT_CONNECTTIMEOUT, 5);
-    curl_setopt($ch_cancel, CURLOPT_TIMEOUT, 8);
-    curl_exec($ch_cancel);
-    curl_close($ch_cancel);
-
-} elseif ($error_type === 'READER_BUSY') {
-    // Reader ocupado = está ONLINE (processando outra transação)
-    $status_leitora  = 'online';
-    $mensagem_status = 'Leitora online (ocupada com outra transação). Aguarde ou cancele.';
-
-} elseif ($error_type === 'READER_OFFLINE') {
-    $status_leitora  = 'offline';
-    $mensagem_status = 'Leitora desligada ou sem conexão. Ligue o SumUp Solo e verifique a internet.';
-
-} elseif ($error_type === 'READER_NOT_FOUND') {
-    $status_leitora  = 'nao_encontrada';
-    $mensagem_status = 'Leitora não encontrada na conta SumUp. Verifique o pareamento no painel.';
-
+    if ($sumup_status === 'ONLINE') {
+        if ($sumup_state === 'BUSY') {
+            $status_leitora  = 'online';
+            $mensagem_status = 'Leitora ONLINE e ocupada com outra transação.';
+        } else {
+            $status_leitora  = 'online';
+            $mensagem_status = 'Leitora ONLINE e pronta para uso.';
+        }
+    } else {
+        // OFFLINE — verificar se nunca se conectou (last_activity null)
+        if (empty($ultima_atividade)) {
+            $status_leitora  = 'offline';
+            $mensagem_status = 'Leitora OFFLINE. O dispositivo nunca se conectou à SumUp. '
+                . 'Verifique se o SumUp Solo está logado na conta correta (merchant: ' . $merchant_code . ').';
+        } else {
+            $status_leitora  = 'offline';
+            $mensagem_status = 'Leitora OFFLINE. Última atividade: ' . $ultima_atividade . '. '
+                . 'Verifique se o dispositivo está ligado e com internet.';
+        }
+    }
 } else {
-    // Qualquer outro erro de validação indica que o reader respondeu = ONLINE
-    $status_leitora  = 'online';
-    $mensagem_status = 'Leitora online. (' . ($error_type ?: 'HTTP ' . $http_reader) . ')';
+    $status_leitora  = 'nao_encontrada';
+    $mensagem_status = 'Não foi possível obter o status da leitora na SumUp (HTTP ' . $http_status . ').';
 }
 
 Logger::info("Reader Status Check", [
-    'android_id'       => $input['android_id'],
-    'reader_id'        => $reader_id,
-    'reader_nome_sumup'=> $reader_nome_sumup,
-    'reader_serial'    => $reader_serial,
-    'pairing_code'     => $pairing_code,
-    'status_leitora'   => $status_leitora,
-    'api_ativa'        => $api_ativa,
-    'http_reader'      => $http_reader,
-    'error_type'       => $error_type
+    'android_id'      => $input['android_id'],
+    'reader_id'       => $reader_id,
+    'reader_nome'     => $reader_nome,
+    'reader_serial'   => $reader_serial,
+    'pairing_code'    => $pairing_code,
+    'status_leitora'  => $status_leitora,
+    'api_ativa'       => $api_ativa,
+    'bateria'         => $bateria,
+    'conexao'         => $conexao,
+    'firmware'        => $firmware,
+    'ultima_atividade'=> $ultima_atividade,
+    'http_status'     => $http_status
 ]);
 
 echo json_encode([
-    'leitora_nome'   => $reader_nome_sumup . ' (' . $pairing_code . ')',
-    'reader_id'      => $reader_id,
-    'serial'         => $reader_serial,
-    'status_leitora' => $status_leitora,
-    'api_ativa'      => $api_ativa,
-    'mensagem'       => $mensagem_status
+    'leitora_nome'     => $reader_nome . ' (' . $pairing_code . ')',
+    'reader_id'        => $reader_id,
+    'serial'           => $reader_serial,
+    'status_leitora'   => $status_leitora,
+    'api_ativa'        => $api_ativa,
+    'bateria'          => $bateria !== null ? round($bateria) . '%' : null,
+    'conexao'          => $conexao,
+    'firmware'         => $firmware,
+    'ultima_atividade' => $ultima_atividade,
+    'mensagem'         => $mensagem_status
 ], JSON_UNESCAPED_UNICODE);

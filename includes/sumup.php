@@ -103,13 +103,16 @@ class SumUpIntegration {
         // Converter valor para INTEGER em centavos
         $valor_centavos = intval(round(floatval($order_data['valor']) * 100));
         
+        // CORRECAO 3: Remover campo 'installments' do payload
+        // O endpoint /readers/{id}/checkout da SumUp NAO aceita 'installments'
+        // (retorna HTTP 422: installments not allowed). O parcelamento e
+        // gerenciado diretamente pelo leitor fisico SumUp Solo.
         $body = [
             'total_amount' => [
                 'value'      => $valor_centavos,
                 'currency'   => 'BRL',
                 'minor_unit' => 2
             ],
-            'installments' => 1,
             'description'  => $order_data['descricao'],
             'card_type'    => $card_type,
             'return_url'   => SITE_URL . '/api/webhook.php'
@@ -125,8 +128,26 @@ class SumUpIntegration {
         }
         
         // Retornar erro detalhado da SumUp ao inves de false
-        $error_type   = $response['data']->errors->type   ?? 'UNKNOWN_ERROR';
-        $error_detail = $response['data']->errors->detail ?? 'Erro desconhecido';
+        // A SumUp pode retornar dois formatos de erro:
+        // 1. Erros de negocio: {"errors":{"type":"READER_OFFLINE","detail":"..."}}
+        // 2. Erros de validacao: {"errors":{"campo":["mensagem"]}}
+        $errors_obj   = $response['data']->errors ?? null;
+        $error_type   = 'UNKNOWN_ERROR';
+        $error_detail = 'Erro desconhecido';
+        if ($errors_obj) {
+            if (isset($errors_obj->type)) {
+                // Formato 1: erro de negocio
+                $error_type   = $errors_obj->type;
+                $error_detail = $errors_obj->detail ?? 'Erro desconhecido';
+            } else {
+                // Formato 2: erro de validacao (ex: installments not allowed)
+                $fields = array_keys((array) $errors_obj);
+                $first_field = $fields[0] ?? 'campo';
+                $first_msgs  = (array) ($errors_obj->$first_field ?? []);
+                $error_type   = 'VALIDATION_ERROR';
+                $error_detail = "Campo '{$first_field}': " . ($first_msgs[0] ?? 'invalido');
+            }
+        }
         
         $error_messages = [
             'READER_OFFLINE'   => 'Leitor de cartao esta desligado ou sem conexao. Verifique se o SumUp Solo esta ligado e conectado.',

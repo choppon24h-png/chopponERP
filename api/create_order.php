@@ -130,14 +130,40 @@ if ($input['payment_method'] === 'pix') {
 } else {
     // Criar checkout para cartão
     if (empty($tap['reader_id'])) {
+        Logger::error("Create Order - No Reader ID", [
+            'tap_id' => $tap['id'],
+            'android_id' => $tap['android_id']
+        ]);
         http_response_code(400);
         echo json_encode(['error' => 'TAP não possui leitora de cartão configurada']);
         exit;
     }
     
+    // LOG: Dados da TAP
+    Logger::info("Create Order - TAP Data", [
+        'tap_id' => $tap['id'],
+        'reader_id' => $tap['reader_id'],
+        'android_id' => $tap['android_id'],
+        'estabelecimento_id' => $tap['estabelecimento_id']
+    ]);
+    
+    // LOG: Dados do pedido
+    Logger::info("Create Order - Order Data", [
+        'order_id' => $order_id,
+        'valor' => $input['valor'],
+        'payment_method' => $input['payment_method'],
+        'descricao' => $input['descricao']
+    ]);
+    
     $result = $sumup->createCheckoutCard($order_data, $tap['reader_id'], $input['payment_method']);
     
     if ($result) {
+        // LOG: Sucesso
+        Logger::info("Create Order - Success", [
+            'checkout_id' => $result['checkout_id'],
+            'order_id' => $order_id
+        ]);
+        
         // Atualizar pedido com dados do checkout
         $stmt = $conn->prepare("
             UPDATE `order` 
@@ -151,11 +177,27 @@ if ($input['payment_method'] === 'pix') {
             'checkout_id' => $result['checkout_id']
         ]);
     } else {
+        // LOG: Falha detalhada
+        Logger::error("Create Order - Failed", [
+            'tap_id' => $tap['id'],
+            'reader_id' => $tap['reader_id'],
+            'order_id' => $order_id,
+            'result' => $result
+        ]);
+        
         // Marcar como falhou
         $stmt = $conn->prepare("UPDATE `order` SET checkout_status = 'FAILED' WHERE id = ?");
         $stmt->execute([$order_id]);
         
+        // Mensagem de erro detalhada
+        $error_msg = 'Erro ao criar checkout de cartão';
+        if (isset($result['curl_error']) && !empty($result['curl_error'])) {
+            $error_msg .= ': ' . $result['curl_error'];
+        } elseif (isset($result['raw_response'])) {
+            $error_msg .= ': ' . $result['raw_response'];
+        }
+        
         http_response_code(500);
-        echo json_encode(['error' => 'Erro ao criar checkout de cartão']);
+        echo json_encode(['error' => $error_msg]);
     }
 }

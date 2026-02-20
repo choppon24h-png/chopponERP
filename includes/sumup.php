@@ -158,13 +158,35 @@ class SumUpIntegration {
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         }
         
+        // LOG: Requisição
+        Logger::info("SumUp Request", [
+            'url' => $url,
+            'method' => $method,
+            'data' => $data
+        ]);
+        
         $response = curl_exec($ch);
         $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($ch);
         curl_close($ch);
+        
+        // LOG: Resposta
+        Logger::info("SumUp Response", [
+            'status' => $status,
+            'response' => $response,
+            'curl_error' => $curl_error
+        ]);
+        
+        // Verificar erro de cURL
+        if ($curl_error) {
+            Logger::error("SumUp cURL Error", ['error' => $curl_error]);
+        }
         
         return [
             'status' => $status,
-            'data' => json_decode($response)
+            'data' => json_decode($response),
+            'raw_response' => $response,
+            'curl_error' => $curl_error
         ];
     }
 }

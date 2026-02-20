@@ -155,11 +155,9 @@ if ($input['payment_method'] === 'pix') {
         'descricao' => $input['descricao']
     ]);
     
+    // Cada TAP comunica EXCLUSIVAMENTE com seu leitor vinculado (sem fallback)
     $result = $sumup->createCheckoutCard($order_data, $tap['reader_id'], $input['payment_method']);
     
-    // CORRECAO: verificar checkout_id no array retornado
-    // Antes: if ($result) -> truthy, mas o novo retorno de erro tambem e truthy (array)
-    // Agora: if (isset($result['checkout_id'])) -> verifica existencia da chave correta
     if (isset($result['checkout_id'])) {
         // LOG: Sucesso
         Logger::info("Create Order - Success", [

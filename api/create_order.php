@@ -159,10 +159,18 @@ if ($input['payment_method'] === 'pix') {
     $result = $sumup->createCheckoutCard($order_data, $tap['reader_id'], $input['payment_method']);
     
     if (isset($result['checkout_id'])) {
-        // LOG: Sucesso
+        // Buscar informações do reader (nome e serial) para debug e Service Tools
+        $reader_info   = $sumup->getReaderInfo($tap['reader_id']);
+        $reader_name   = $reader_info['name']   ?? ($tap['pairing_code'] ?? 'desconhecido');
+        $reader_serial = $reader_info['serial']  ?? 'desconhecido';
+
+        // LOG: Sucesso com dados completos do reader
         Logger::info("Create Order - Success", [
-            'checkout_id' => $result['checkout_id'],
-            'order_id'    => $order_id
+            'checkout_id'   => $result['checkout_id'],
+            'order_id'      => $order_id,
+            'reader_id'     => $tap['reader_id'],
+            'reader_name'   => $reader_name,
+            'reader_serial' => $reader_serial
         ]);
         
         // Atualizar pedido com dados do checkout
@@ -175,7 +183,10 @@ if ($input['payment_method'] === 'pix') {
         
         http_response_code(200);
         echo json_encode([
-            'checkout_id' => $result['checkout_id']
+            'checkout_id'   => $result['checkout_id'],
+            'reader_name'   => $reader_name,
+            'reader_serial' => $reader_serial,
+            'reader_id'     => $tap['reader_id']
         ]);
     } else {
         // CORRECAO: usar mensagem de erro especifica retornada pelo SumUp

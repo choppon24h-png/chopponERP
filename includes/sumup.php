@@ -177,6 +177,25 @@ class SumUpIntegration {
     }
     
     /**
+     * Busca informações do reader (nome, serial) via GET /readers/{id}
+     * Retorna array com 'name' e 'serial', ou null em caso de erro
+     */
+    public function getReaderInfo($reader_id) {
+        $url = $this->merchant_url . '/readers/' . $reader_id;
+        $response = $this->makeRequest($url, 'GET', null);
+        if ($response['status'] === 200 && isset($response['data'])) {
+            $data = $response['data'];
+            return [
+                'reader_id' => $reader_id,
+                'name'      => $data->name ?? null,
+                'serial'    => $data->device->identifier ?? null,
+                'status'    => $data->status ?? null
+            ];
+        }
+        return null;
+    }
+
+    /**
      * Cancela transação de cartão
      */
     public function cancelCardTransaction($reader_id) {

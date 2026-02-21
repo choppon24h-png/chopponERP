@@ -390,7 +390,7 @@ async function loadSumupReaders() {
     if (!sel) return;
     sel.innerHTML = '<option value="">⏳ Carregando leitoras...</option>';
     try {
-        const resp = await fetch('/api/list_readers.php');
+        const resp = await fetch('/api/manage_readers.php?action=list');
         const data = await resp.json();
         sumupReadersCache = data.readers || [];
         populateReaderSelect(sel, sumupReadersCache);
@@ -402,15 +402,17 @@ async function loadSumupReaders() {
 function populateReaderSelect(sel, readers) {
     sel.innerHTML = '<option value="">-- Nenhuma leitora --</option>';
     readers.forEach(function(r) {
-        const icon  = r.status === 'ONLINE' ? '🟢' : '🔴';
-        const bat   = r.battery ? ' 🔋' + r.battery : '';
-        const conn  = r.connection ? ' (' + r.connection + ')' : '';
-        const opt   = document.createElement('option');
-        opt.value   = r.reader_id;
-        opt.text    = icon + ' ' + r.name + ' | Serial: ' + (r.serial || 'N/A') + bat + conn;
+        const online = r.online === true || r.status_label === 'ONLINE' || r.status === 'ONLINE';
+        const icon   = online ? '🟢' : '🔴';
+        const serial = r.serial || 'N/A';
+        const bat    = (r.battery !== null && r.battery !== undefined) ? ' 🔋' + r.battery + '%' : '';
+        const conn   = r.connection ? ' (' + r.connection + ')' : '';
+        const opt    = document.createElement('option');
+        opt.value    = r.reader_id;
+        opt.text     = icon + ' ' + r.name + ' | Serial: ' + serial + bat + conn;
         opt.dataset.name   = r.name;
-        opt.dataset.serial = r.serial || '';
-        opt.dataset.status = r.status;
+        opt.dataset.serial = serial;
+        opt.dataset.status = online ? 'ONLINE' : 'OFFLINE';
         sel.appendChild(opt);
     });
     // Restaurar seleção salva
@@ -438,10 +440,10 @@ function updateReaderStatusInfo(sel) {
     const status = opt.dataset.status;
     const serial = opt.dataset.serial;
     if (status === 'ONLINE') {
-        info.textContent = '✅ Leitora ONLINE | Serial: ' + serial + ' — Pronta para receber pagamentos';
+        info.innerHTML = '✅ <strong>Leitora ONLINE</strong> | Serial: <code>' + serial + '</code> — Pronta para receber pagamentos';
         info.style.color = '#28a745';
     } else {
-        info.textContent = '⚠️ Leitora OFFLINE | Serial: ' + serial + ' — Ligue o dispositivo SumUp Solo';
+        info.innerHTML = '⚠️ <strong>Leitora OFFLINE</strong> | Serial: <code>' + serial + '</code> — Ligue o dispositivo SumUp Solo e verifique a conexão';
         info.style.color = '#dc3545';
     }
 }

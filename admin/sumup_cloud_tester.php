@@ -138,6 +138,25 @@ async function postAction(action, data = {}) {
     return { ok: resp.ok, status: resp.status, json };
 }
 
+function extractReaderStatusFromPayload(payload) {
+    if (!payload || typeof payload !== 'object') return 'UNKNOWN';
+    const statusRoot = payload.status && typeof payload.status === 'object'
+        ? (payload.status.data && typeof payload.status.data === 'object' ? payload.status.data : payload.status)
+        : {};
+    const raw = statusRoot.status || statusRoot.state || statusRoot.connection_status || 'UNKNOWN';
+    return String(raw || 'UNKNOWN').trim().toUpperCase();
+}
+
+function isReaderReadyStatus(status) {
+    return ['ONLINE', 'CONNECTED', 'READY', 'READY_TO_TRANSACT'].includes(String(status || '').toUpperCase());
+}
+
+async function fetchReaderStatus(readerId) {
+    const resp = await fetch(TEST_API + '?action=reader_status&reader_id=' + encodeURIComponent(readerId));
+    const data = await resp.json();
+    return { ok: resp.ok, status: resp.status, data };
+}
+
 async function loadConfig() {
     try {
         const resp = await fetch(TEST_API + '?action=config');
@@ -161,22 +180,24 @@ async function loadReaders() {
     const sel = document.getElementById('readerSelect');
     sel.innerHTML = '<option value="">Carregando leitoras...</option>';
     try {
-        const resp = await fetch(TEST_API + '?action=readers');
+        const resp = await fetch(TEST_API + '?action=readers_db');
         const data = await resp.json();
         if (!data.success || !Array.isArray(data.readers) || data.readers.length === 0) {
-            sel.innerHTML = '<option value="">Nenhuma leitora retornada pela SumUp</option>';
+            sel.innerHTML = '<option value="">Nenhuma leitora encontrada (sumup_readers/API)</option>';
             setResult('Leitoras', data);
             return;
         }
 
         sel.innerHTML = '<option value="">Selecione...</option>';
         data.readers.forEach((r) => {
-            const rid = r.id || '';
-            const serial = (r.device && r.device.identifier) ? r.device.identifier : '-';
+            const rid = r.reader_id || r.id || '';
+            const serial = r.serial || ((r.device && r.device.identifier) ? r.device.identifier : '-');
+            const modelo = r.model || '-';
             const status = r.status_live || r.status || 'UNKNOWN';
+            const estab = r.estabelecimento_nome || '-';
             const opt = document.createElement('option');
             opt.value = rid;
-            opt.textContent = rid + ' | Serial: ' + serial + ' | Status: ' + status;
+            opt.textContent = rid + ' | Serial: ' + serial + ' | Modelo: ' + modelo + ' | Status: ' + status + ' | Estab: ' + estab;
             opt.dataset.meta = JSON.stringify(r);
             sel.appendChild(opt);
         });
@@ -190,9 +211,23 @@ async function loadReaders() {
 document.getElementById('readerSelect').addEventListener('change', function () {
     const opt = this.options[this.selectedIndex];
     const meta = opt && opt.dataset.meta ? JSON.parse(opt.dataset.meta) : null;
-    const serial = meta && meta.device ? (meta.device.identifier || '-') : '-';
+    const rid = meta ? (meta.reader_id || meta.id || '-') : '-';
+    const serial = meta ? (meta.serial || (meta.device ? (meta.device.identifier || '-') : '-')) : '-';
+    const model = meta ? (meta.model || '-') : '-';
     const st = meta ? (meta.status_live || meta.status || '-') : '-';
-    document.getElementById('readerMeta').textContent = 'Serial: ' + serial + ' | Status: ' + st;
+    const conn = meta ? (meta.connection_type || '-') : '-';
+    const battery = meta ? (meta.battery_level ?? '-') : '-';
+    const last = meta ? (meta.last_activity || '-') : '-';
+    const estab = meta ? (meta.estabelecimento_nome || '-') : '-';
+    document.getElementById('readerMeta').textContent =
+        'Reader ID: ' + rid +
+        ' | Serial: ' + serial +
+        ' | Modelo: ' + model +
+        ' | Status: ' + st +
+        ' | Conexao: ' + conn +
+        ' | Bateria: ' + battery +
+        ' | Ultima atividade: ' + last +
+        ' | Estab: ' + estab;
 });
 
 async function runCheckout(cardType) {
@@ -201,6 +236,27 @@ async function runCheckout(cardType) {
         setResult('Validacao', { error: 'Selecione um reader_id' });
         return;
     }
+
+    // 1) Executa leitura de status imediatamente antes do checkout
+    setResult('Pre-check da leitora...', { reader_id: readerId });
+    const pre = await fetchReaderStatus(readerId);
+    const preStatus = extractReaderStatusFromPayload(pre.data || {});
+    const ready = pre.ok && pre.data && pre.data.success && isReaderReadyStatus(preStatus);
+
+    // 2) Bloqueia checkout se nao estiver pronta/conectada
+    if (!ready) {
+        setResult('Checkout bloqueado - leitora nao pronta', {
+            precheck: pre,
+            status_interpretado: preStatus,
+            next_steps: [
+                'No SumUp Solo acesse Connections -> API -> Connect.',
+                'Confirme no display: Connected / Ready to transact.',
+                'Clique em "Ler Status da Leitora" e tente novamente.'
+            ]
+        });
+        return;
+    }
+
     const amount = getAmount();
     const description = getDescription();
     setResult('Enviando checkout ' + cardType + '...', { reader_id: readerId, amount, description });
@@ -230,9 +286,12 @@ async function checkReaderStatus() {
         setResult('Validacao', { error: 'Selecione um reader_id' });
         return;
     }
-    const resp = await fetch(TEST_API + '?action=reader_status&reader_id=' + encodeURIComponent(readerId));
-    const data = await resp.json();
-    setResult('Status da leitora', data);
+    const out = await fetchReaderStatus(readerId);
+    setResult('Status da leitora', {
+        ...out.data,
+        status_interpretado: extractReaderStatusFromPayload(out.data || {}),
+        pronta_para_checkout: isReaderReadyStatus(extractReaderStatusFromPayload(out.data || {}))
+    });
 }
 
 document.addEventListener('DOMContentLoaded', async function () {

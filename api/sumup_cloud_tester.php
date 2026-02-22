@@ -98,9 +98,28 @@ function sumupHttpTester(string $method, string $url, string $token, ?array $bod
     ];
 }
 
+function extractReaderStatusTester($payload): string {
+    if (!is_array($payload)) {
+        return 'UNKNOWN';
+    }
+    $data = $payload['data'] ?? $payload;
+    if (!is_array($data)) {
+        return 'UNKNOWN';
+    }
+    $candidate = $data['status'] ?? $data['state'] ?? $data['connection_status'] ?? null;
+    if (is_string($candidate) && $candidate !== '') {
+        return strtoupper(trim($candidate));
+    }
+    return 'UNKNOWN';
+}
+
+function isReaderReadyTester(string $status): bool {
+    return in_array($status, ['ONLINE', 'CONNECTED', 'READY', 'READY_TO_TRANSACT'], true);
+}
+
 $conn = getDBConnection();
 $cfg = loadPaymentConfigTester($conn);
-$action = $_GET['action'] ?? $_POST['action'] ?? 'readers';
+$action = $_GET['action'] ?? $_POST['action'] ?? 'readers_db';
 
 if ($action === 'config') {
     echo json_encode([
@@ -161,6 +180,89 @@ if ($action === 'readers') {
     exit;
 }
 
+if ($action === 'readers_db') {
+    try {
+        $stmt = $conn->query("
+            SELECT
+                sr.reader_id,
+                sr.name,
+                sr.serial,
+                sr.model,
+                sr.status,
+                sr.battery_level,
+                sr.connection_type,
+                sr.last_activity,
+                sr.updated_at,
+                sr.created_at,
+                sr.estabelecimento_id,
+                e.name AS estabelecimento_nome
+            FROM sumup_readers sr
+            LEFT JOIN estabelecimentos e ON e.id = sr.estabelecimento_id
+            ORDER BY sr.updated_at DESC, sr.created_at DESC
+        ");
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        paymentLogTester('CloudTester readers_db falhou', ['error' => $e->getMessage()]);
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Falha ao consultar tabela sumup_readers',
+            'detail' => $e->getMessage(),
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // Enriquecer com status ao vivo da SumUp quando possivel
+    foreach ($rows as &$r) {
+        $rid = trim((string) ($r['reader_id'] ?? ''));
+        $r['status_live'] = strtoupper((string) ($r['status'] ?? 'UNKNOWN'));
+        $r['source'] = 'db';
+        if ($rid === '') {
+            continue;
+        }
+
+        $urlStatus = "https://api.sumup.com/v0.1/merchants/{$cfg['merchant_code']}/readers/{$rid}/status";
+        $st = sumupHttpTester('GET', $urlStatus, $cfg['token_sumup'], null, 10);
+        if ($st['http_code'] === 200) {
+            $sd = $st['data']['data'] ?? $st['data'] ?? [];
+            $r['status_live'] = strtoupper((string) ($sd['status'] ?? $r['status_live']));
+            $r['battery_level'] = $sd['battery_level'] ?? $r['battery_level'];
+            $r['connection_type'] = $sd['connection_type'] ?? $r['connection_type'];
+            $r['last_activity'] = $sd['last_activity'] ?? $r['last_activity'];
+            $r['source'] = 'db+api';
+        }
+    }
+    unset($r);
+
+    paymentLogTester('CloudTester readers_db list', [
+        'count' => count($rows),
+        'merchant_code' => $cfg['merchant_code'],
+    ]);
+
+    // Fallback para API pura se tabela local estiver vazia
+    if (count($rows) === 0) {
+        $url = "https://api.sumup.com/v0.1/merchants/{$cfg['merchant_code']}/readers";
+        $res = sumupHttpTester('GET', $url, $cfg['token_sumup'], null, 20);
+        if ($res['http_code'] === 200 && is_array($res['data'])) {
+            echo json_encode([
+                'success' => true,
+                'merchant_code' => $cfg['merchant_code'],
+                'source' => 'api_fallback',
+                'readers' => $res['data'],
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    }
+
+    echo json_encode([
+        'success' => true,
+        'merchant_code' => $cfg['merchant_code'],
+        'source' => 'db',
+        'readers' => $rows,
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 if ($action === 'reader_status') {
     $reader_id = trim((string) ($_POST['reader_id'] ?? $_GET['reader_id'] ?? ''));
     if ($reader_id === '') {
@@ -204,6 +306,56 @@ if ($action === 'checkout') {
     if (!in_array($card_type, ['debit', 'credit'], true)) {
         http_response_code(400);
         echo json_encode(['success' => false, 'error' => 'card_type invalido']);
+        exit;
+    }
+
+    // 1) Pre-check de status em tempo real antes de enviar checkout
+    $urlPreStatus = "https://api.sumup.com/v0.1/merchants/{$cfg['merchant_code']}/readers/{$reader_id}/status";
+    $pre = sumupHttpTester('GET', $urlPreStatus, $cfg['token_sumup'], null, 12);
+    $preStatus = extractReaderStatusTester($pre['data']);
+    $preReady = isReaderReadyTester($preStatus);
+
+    paymentLogTester('CloudTester checkout precheck', [
+        'reader_id' => $reader_id,
+        'merchant_code' => $cfg['merchant_code'],
+        'http_code' => $pre['http_code'],
+        'status' => $preStatus,
+        'ready' => $preReady ? 1 : 0,
+        'curl_error' => $pre['curl_error'],
+        'raw' => $pre['raw'],
+    ]);
+
+    // 2) Bloqueia checkout se status nao estiver pronto/conectado
+    if ($pre['http_code'] !== 200 || !$preReady) {
+        $detail = 'Leitora fora de estado pronto para Cloud API.';
+        if ($pre['http_code'] === 200 && $preStatus !== 'UNKNOWN') {
+            $detail = "Leitora nao pronta. Status atual: {$preStatus}.";
+        } elseif ($pre['curl_error'] !== '') {
+            $detail = 'Falha de rede ao consultar status da leitora: ' . $pre['curl_error'];
+        }
+
+        // 3) Instrucao direta de reconexao no dispositivo SumUp Solo
+        echo json_encode([
+            'success' => false,
+            'http_code' => 409,
+            'response' => [
+                'errors' => [
+                    'type' => 'READER_NOT_READY',
+                    'detail' => $detail,
+                ],
+                'next_steps' => [
+                    'No SumUp Solo acesse Connections -> API -> Connect.',
+                    'Confirme no display: Connected / Ready to transact.',
+                    'Rode "Ler Status da Leitora" e tente novamente.',
+                ],
+            ],
+            'precheck' => [
+                'http_code' => $pre['http_code'],
+                'status' => $preStatus,
+                'curl_error' => $pre['curl_error'],
+                'raw' => $pre['raw'],
+            ],
+        ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 

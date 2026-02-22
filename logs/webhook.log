@@ -150,3 +150,141 @@
 2026-01-25 22:10:41 - Order atualizada: 43d2288b-63aa-4469-8b18-7ccac45e30ab -> SUCCESSFUL
 2026-01-31 17:52:23 - Webhook recebido: {"id":"82c5ce37-34de-4ec2-9551-119e74aa47aa","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"5b5f7002-8bd4-4baa-9548-1d5e1415ce74","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-01-31T20:52:22.792776Z"}
 2026-01-31 17:52:23 - Order atualizada: 5b5f7002-8bd4-4baa-9548-1d5e1415ce74 -> FAILED
+2026-02-08 11:38:02 - Webhook recebido: {"id":"38cbddf2-a1c9-4bd4-9928-37ab90664737","status":"SUCCESSFUL","event_type":"CHECKOUT_STATUS_CHANGED"}
+2026-02-08 11:38:02 - Order atualizada: 38cbddf2-a1c9-4bd4-9928-37ab90664737 -> SUCCESSFUL
+2026-02-08 11:45:22 - Webhook recebido: {"id":"35cd2abd-f445-4fa3-9e54-fcb8d9246147","status":"SUCCESSFUL","event_type":"CHECKOUT_STATUS_CHANGED"}
+2026-02-08 11:45:22 - Order atualizada: 35cd2abd-f445-4fa3-9e54-fcb8d9246147 -> SUCCESSFUL
+2026-02-19 00:42:27 - Webhook recebido: {"id":"cdf899df-0a61-4d9d-a0b2-c50e61f09487","status":"SUCCESSFUL","event_type":"CHECKOUT_STATUS_CHANGED"}
+2026-02-19 00:42:27 - Order atualizada: cdf899df-0a61-4d9d-a0b2-c50e61f09487 -> SUCCESSFUL
+2026-02-20 01:58:32 - Webhook recebido: {"id":"7147432b-c17e-4ee5-8a8d-3cdfb8149eea","status":"SUCCESSFUL","event_type":"CHECKOUT_STATUS_CHANGED"}
+2026-02-20 01:58:32 - Order atualizada: 7147432b-c17e-4ee5-8a8d-3cdfb8149eea -> SUCCESSFUL
+2026-02-20 01:59:27 - Webhook recebido: {"id":"5f480dfe-6f48-49b7-905a-7d070da8fbd3","status":"SUCCESSFUL","event_type":"CHECKOUT_STATUS_CHANGED"}
+2026-02-20 01:59:27 - Order atualizada: 5f480dfe-6f48-49b7-905a-7d070da8fbd3 -> SUCCESSFUL
+2026-02-20 14:55:39 - Webhook recebido: {"id":"07f574da-e601-4a20-8153-f2c9b18a80ab","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"52e722cc-7274-4d12-b3f2-f140c6871350","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:38.726106Z"}
+2026-02-20 14:55:39 - Pedido não encontrado: 52e722cc-7274-4d12-b3f2-f140c6871350
+2026-02-20 14:55:43 - Webhook recebido: {"id":"2b495b78-232a-449f-8f50-4204a3d9f0ae","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"22d91832-15c4-40cd-bdca-242bdfdd4847","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:42.930095Z"}
+2026-02-20 14:55:43 - Pedido não encontrado: 22d91832-15c4-40cd-bdca-242bdfdd4847
+2026-02-20 14:56:44 - Webhook recebido: {"id":"07f574da-e601-4a20-8153-f2c9b18a80ab","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"52e722cc-7274-4d12-b3f2-f140c6871350","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:38.726106Z"}
+2026-02-20 14:56:44 - Pedido não encontrado: 52e722cc-7274-4d12-b3f2-f140c6871350
+2026-02-20 14:56:47 - Webhook recebido: {"id":"2b495b78-232a-449f-8f50-4204a3d9f0ae","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"22d91832-15c4-40cd-bdca-242bdfdd4847","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:42.930095Z"}
+2026-02-20 14:56:47 - Pedido não encontrado: 22d91832-15c4-40cd-bdca-242bdfdd4847
+2026-02-20 14:58:52 - Webhook recebido: {"id":"07f574da-e601-4a20-8153-f2c9b18a80ab","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"52e722cc-7274-4d12-b3f2-f140c6871350","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:38.726106Z"}
+2026-02-20 14:58:52 - Pedido não encontrado: 52e722cc-7274-4d12-b3f2-f140c6871350
+2026-02-20 14:58:56 - Webhook recebido: {"id":"2b495b78-232a-449f-8f50-4204a3d9f0ae","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"22d91832-15c4-40cd-bdca-242bdfdd4847","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:42.930095Z"}
+2026-02-20 14:58:56 - Pedido não encontrado: 22d91832-15c4-40cd-bdca-242bdfdd4847
+2026-02-20 15:03:09 - Webhook recebido: {"id":"07f574da-e601-4a20-8153-f2c9b18a80ab","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"52e722cc-7274-4d12-b3f2-f140c6871350","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:38.726106Z"}
+2026-02-20 15:03:09 - Pedido não encontrado: 52e722cc-7274-4d12-b3f2-f140c6871350
+2026-02-20 15:03:12 - Webhook recebido: {"id":"2b495b78-232a-449f-8f50-4204a3d9f0ae","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"22d91832-15c4-40cd-bdca-242bdfdd4847","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:42.930095Z"}
+2026-02-20 15:03:12 - Pedido não encontrado: 22d91832-15c4-40cd-bdca-242bdfdd4847
+2026-02-20 15:11:42 - Webhook recebido: {"id":"07f574da-e601-4a20-8153-f2c9b18a80ab","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"52e722cc-7274-4d12-b3f2-f140c6871350","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:38.726106Z"}
+2026-02-20 15:11:42 - Pedido não encontrado: 52e722cc-7274-4d12-b3f2-f140c6871350
+2026-02-20 15:11:44 - Webhook recebido: {"id":"2b495b78-232a-449f-8f50-4204a3d9f0ae","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"22d91832-15c4-40cd-bdca-242bdfdd4847","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:42.930095Z"}
+2026-02-20 15:11:44 - Pedido não encontrado: 22d91832-15c4-40cd-bdca-242bdfdd4847
+2026-02-20 15:26:58 - Webhook recebido: {"id":"caf2964b-96e8-424c-9d1e-cee2aed2c0b3","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"18d62b8b-793d-4592-919b-20e9955de31b","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T18:26:57.532295Z"}
+2026-02-20 15:26:58 - Pedido não encontrado: 18d62b8b-793d-4592-919b-20e9955de31b
+2026-02-20 15:28:03 - Webhook recebido: {"id":"caf2964b-96e8-424c-9d1e-cee2aed2c0b3","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"18d62b8b-793d-4592-919b-20e9955de31b","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T18:26:57.532295Z"}
+2026-02-20 15:28:03 - Pedido não encontrado: 18d62b8b-793d-4592-919b-20e9955de31b
+2026-02-20 15:28:46 - Webhook recebido: {"id":"07f574da-e601-4a20-8153-f2c9b18a80ab","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"52e722cc-7274-4d12-b3f2-f140c6871350","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:38.726106Z"}
+2026-02-20 15:28:46 - Pedido não encontrado: 52e722cc-7274-4d12-b3f2-f140c6871350
+2026-02-20 15:28:49 - Webhook recebido: {"id":"2b495b78-232a-449f-8f50-4204a3d9f0ae","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"22d91832-15c4-40cd-bdca-242bdfdd4847","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:42.930095Z"}
+2026-02-20 15:28:49 - Pedido não encontrado: 22d91832-15c4-40cd-bdca-242bdfdd4847
+2026-02-20 15:30:11 - Webhook recebido: {"id":"caf2964b-96e8-424c-9d1e-cee2aed2c0b3","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"18d62b8b-793d-4592-919b-20e9955de31b","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T18:26:57.532295Z"}
+2026-02-20 15:30:11 - Pedido não encontrado: 18d62b8b-793d-4592-919b-20e9955de31b
+2026-02-20 15:34:28 - Webhook recebido: {"id":"caf2964b-96e8-424c-9d1e-cee2aed2c0b3","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"18d62b8b-793d-4592-919b-20e9955de31b","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T18:26:57.532295Z"}
+2026-02-20 15:34:28 - Pedido não encontrado: 18d62b8b-793d-4592-919b-20e9955de31b
+2026-02-20 15:43:01 - Webhook recebido: {"id":"caf2964b-96e8-424c-9d1e-cee2aed2c0b3","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"18d62b8b-793d-4592-919b-20e9955de31b","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T18:26:57.532295Z"}
+2026-02-20 15:43:01 - Pedido não encontrado: 18d62b8b-793d-4592-919b-20e9955de31b
+2026-02-20 15:45:23 - Webhook recebido: {"id":"1f9f1b09-07ee-4f1b-ab6d-cca6a763d79f","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"784d4b3a-d07c-44b4-a30b-abef24352e33","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T18:45:22.576427Z"}
+2026-02-20 15:45:23 - Order atualizada: 784d4b3a-d07c-44b4-a30b-abef24352e33 -> FAILED
+2026-02-20 15:48:01 - Webhook recebido: {"id":"0b941f44-1379-4313-b3a5-745df8137911","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"efd81cdf-f2b4-426f-a39b-aca713add788","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T18:48:00.613595Z"}
+2026-02-20 15:48:01 - Order atualizada: efd81cdf-f2b4-426f-a39b-aca713add788 -> FAILED
+2026-02-20 15:50:09 - Webhook recebido: {"id":"04c03768-fce3-482a-8853-32de07bb8f5e","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"eba14426-b45c-4297-92e5-b6e194325e7a","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T18:50:08.616809Z"}
+2026-02-20 15:50:09 - Order atualizada: eba14426-b45c-4297-92e5-b6e194325e7a -> FAILED
+2026-02-20 15:51:32 - Webhook recebido: {"id":"e4d1be8d-573f-41ef-8398-b67a58e7756b","status":"SUCCESSFUL","event_type":"CHECKOUT_STATUS_CHANGED"}
+2026-02-20 15:51:32 - Order atualizada: e4d1be8d-573f-41ef-8398-b67a58e7756b -> SUCCESSFUL
+2026-02-20 15:54:41 - Webhook recebido: {"id":"51f6e086-b08c-43c6-818d-f123945cf32c","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"25248b30-fca6-4d63-8b38-449ecc78beda","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T18:54:40.665015Z"}
+2026-02-20 15:54:41 - Order atualizada: 25248b30-fca6-4d63-8b38-449ecc78beda -> FAILED
+2026-02-20 15:59:49 - Webhook recebido: {"id":"f32c6f88-a3a9-4dd0-8c20-470d8cf38da9","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"c6dbd81c-ffe2-4c9a-928f-2c14c0055fbe","merchant_code":"MCTSYDUE","status":"failed","transaction_id":"79181951-51ea-492a-a8aa-24a20a6d7791"},"timestamp":"2026-02-20T18:59:48.452703Z"}
+2026-02-20 15:59:49 - Order atualizada: c6dbd81c-ffe2-4c9a-928f-2c14c0055fbe -> FAILED
+2026-02-20 16:00:05 - Webhook recebido: {"id":"caf2964b-96e8-424c-9d1e-cee2aed2c0b3","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"18d62b8b-793d-4592-919b-20e9955de31b","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T18:26:57.532295Z"}
+2026-02-20 16:00:05 - Pedido não encontrado: 18d62b8b-793d-4592-919b-20e9955de31b
+2026-02-20 16:02:55 - Webhook recebido: {"id":"07f574da-e601-4a20-8153-f2c9b18a80ab","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"52e722cc-7274-4d12-b3f2-f140c6871350","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:38.726106Z"}
+2026-02-20 16:02:55 - Pedido não encontrado: 52e722cc-7274-4d12-b3f2-f140c6871350
+2026-02-20 16:02:57 - Webhook recebido: {"id":"2b495b78-232a-449f-8f50-4204a3d9f0ae","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"22d91832-15c4-40cd-bdca-242bdfdd4847","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:42.930095Z"}
+2026-02-20 16:02:57 - Pedido não encontrado: 22d91832-15c4-40cd-bdca-242bdfdd4847
+2026-02-20 16:30:49 - Webhook recebido: {"id":"c3b78f88-a0a9-4f7f-86a9-bd12ab978eaf","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"a0a56ff5-81cc-406d-a4d1-b426b997d7e4","merchant_code":"MCTSYDUE","status":"failed","transaction_id":"4f042240-0194-4713-85e6-2cf84aef785a"},"timestamp":"2026-02-20T19:30:48.512924Z"}
+2026-02-20 16:30:49 - Order atualizada: a0a56ff5-81cc-406d-a4d1-b426b997d7e4 -> FAILED
+2026-02-20 16:34:14 - Webhook recebido: {"id":"caf2964b-96e8-424c-9d1e-cee2aed2c0b3","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"18d62b8b-793d-4592-919b-20e9955de31b","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T18:26:57.532295Z"}
+2026-02-20 16:34:14 - Pedido não encontrado: 18d62b8b-793d-4592-919b-20e9955de31b
+2026-02-20 16:41:39 - Webhook recebido: {"id":"ccc980f0-b231-4936-9201-d09c52ca79f0","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"ff4cdeac-aa91-4f32-a51b-06d1eb1bca8f","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:41:38.617140Z"}
+2026-02-20 16:41:39 - Order atualizada: ff4cdeac-aa91-4f32-a51b-06d1eb1bca8f -> FAILED
+2026-02-20 16:44:13 - Webhook recebido: {"id":"6494c637-337a-478a-8b6b-3831f5df3421","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"d435b3ff-c06b-4f8c-8433-460c2e6c5ac2","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:44:12.529769Z"}
+2026-02-20 16:44:13 - Order atualizada: d435b3ff-c06b-4f8c-8433-460c2e6c5ac2 -> FAILED
+2026-02-20 16:48:15 - Webhook recebido: {"id":"2994173f-007a-49ec-8c07-a4339fb9e097","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"837b20af-055d-4cbb-a9f9-0872b725f558","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:48:14.556350Z"}
+2026-02-20 16:48:15 - Pedido não encontrado: 837b20af-055d-4cbb-a9f9-0872b725f558
+2026-02-20 16:49:20 - Webhook recebido: {"id":"2994173f-007a-49ec-8c07-a4339fb9e097","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"837b20af-055d-4cbb-a9f9-0872b725f558","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:48:14.556350Z"}
+2026-02-20 16:49:20 - Pedido não encontrado: 837b20af-055d-4cbb-a9f9-0872b725f558
+2026-02-20 16:49:33 - Webhook recebido: {"id":"54fd3406-a0bf-448f-9eb7-218a86d8b87c","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"f807504b-f76c-4d47-96a2-2a96a9ea3776","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:49:33.084252Z"}
+2026-02-20 16:49:33 - Pedido não encontrado: f807504b-f76c-4d47-96a2-2a96a9ea3776
+2026-02-20 16:50:38 - Webhook recebido: {"id":"54fd3406-a0bf-448f-9eb7-218a86d8b87c","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"f807504b-f76c-4d47-96a2-2a96a9ea3776","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:49:33.084252Z"}
+2026-02-20 16:50:38 - Pedido não encontrado: f807504b-f76c-4d47-96a2-2a96a9ea3776
+2026-02-20 16:51:28 - Webhook recebido: {"id":"2994173f-007a-49ec-8c07-a4339fb9e097","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"837b20af-055d-4cbb-a9f9-0872b725f558","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:48:14.556350Z"}
+2026-02-20 16:51:28 - Pedido não encontrado: 837b20af-055d-4cbb-a9f9-0872b725f558
+2026-02-20 16:52:46 - Webhook recebido: {"id":"54fd3406-a0bf-448f-9eb7-218a86d8b87c","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"f807504b-f76c-4d47-96a2-2a96a9ea3776","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:49:33.084252Z"}
+2026-02-20 16:52:46 - Pedido não encontrado: f807504b-f76c-4d47-96a2-2a96a9ea3776
+2026-02-20 16:55:45 - Webhook recebido: {"id":"2994173f-007a-49ec-8c07-a4339fb9e097","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"837b20af-055d-4cbb-a9f9-0872b725f558","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:48:14.556350Z"}
+2026-02-20 16:55:45 - Pedido não encontrado: 837b20af-055d-4cbb-a9f9-0872b725f558
+2026-02-20 16:57:03 - Webhook recebido: {"id":"54fd3406-a0bf-448f-9eb7-218a86d8b87c","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"f807504b-f76c-4d47-96a2-2a96a9ea3776","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:49:33.084252Z"}
+2026-02-20 16:57:03 - Pedido não encontrado: f807504b-f76c-4d47-96a2-2a96a9ea3776
+2026-02-20 16:57:56 - Webhook recebido: {"id":"c6a5c911-e2a8-4f31-868b-ec07097f87a9","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"32faffdd-9217-4c62-bf9a-010afcc2c726","merchant_code":"MCTSYDUE","status":"failed","transaction_id":"47d9a9c7-8293-41d3-9924-a80e8fb8868a"},"timestamp":"2026-02-20T19:57:55.376985Z"}
+2026-02-20 16:57:56 - Order atualizada: 32faffdd-9217-4c62-bf9a-010afcc2c726 -> FAILED
+2026-02-20 17:04:18 - Webhook recebido: {"id":"2994173f-007a-49ec-8c07-a4339fb9e097","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"837b20af-055d-4cbb-a9f9-0872b725f558","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:48:14.556350Z"}
+2026-02-20 17:04:18 - Pedido não encontrado: 837b20af-055d-4cbb-a9f9-0872b725f558
+2026-02-20 17:05:36 - Webhook recebido: {"id":"54fd3406-a0bf-448f-9eb7-218a86d8b87c","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"f807504b-f76c-4d47-96a2-2a96a9ea3776","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:49:33.084252Z"}
+2026-02-20 17:05:36 - Pedido não encontrado: f807504b-f76c-4d47-96a2-2a96a9ea3776
+2026-02-20 17:11:11 - Webhook recebido: {"id":"07f574da-e601-4a20-8153-f2c9b18a80ab","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"52e722cc-7274-4d12-b3f2-f140c6871350","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:38.726106Z"}
+2026-02-20 17:11:11 - Pedido não encontrado: 52e722cc-7274-4d12-b3f2-f140c6871350
+2026-02-20 17:11:14 - Webhook recebido: {"id":"2b495b78-232a-449f-8f50-4204a3d9f0ae","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"22d91832-15c4-40cd-bdca-242bdfdd4847","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:42.930095Z"}
+2026-02-20 17:11:14 - Pedido não encontrado: 22d91832-15c4-40cd-bdca-242bdfdd4847
+2026-02-20 17:11:28 - Webhook recebido: {"id":"ea379853-0458-47f2-b54f-9da6d52ded5d","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"94748626-c044-4930-86d2-25d7295842ae","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T20:11:27.612969Z"}
+2026-02-20 17:11:28 - Order atualizada: 94748626-c044-4930-86d2-25d7295842ae -> FAILED
+2026-02-20 17:13:16 - Webhook recebido: {"id":"86593211-41b5-4c03-b18f-255e3bafebf0","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"411339d6-a984-4a8e-ab6f-4358213d11fa","merchant_code":"MCTSYDUE","status":"failed","transaction_id":"0bf56bc8-a96e-4ed2-867a-4492cb437973"},"timestamp":"2026-02-20T20:13:15.541594Z"}
+2026-02-20 17:13:16 - Order atualizada: 411339d6-a984-4a8e-ab6f-4358213d11fa -> FAILED
+2026-02-20 17:21:22 - Webhook recebido: {"id":"2994173f-007a-49ec-8c07-a4339fb9e097","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"837b20af-055d-4cbb-a9f9-0872b725f558","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:48:14.556350Z"}
+2026-02-20 17:21:22 - Pedido não encontrado: 837b20af-055d-4cbb-a9f9-0872b725f558
+2026-02-20 17:22:40 - Webhook recebido: {"id":"54fd3406-a0bf-448f-9eb7-218a86d8b87c","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"f807504b-f76c-4d47-96a2-2a96a9ea3776","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:49:33.084252Z"}
+2026-02-20 17:22:40 - Pedido não encontrado: f807504b-f76c-4d47-96a2-2a96a9ea3776
+2026-02-20 17:25:55 - Webhook recebido: {"id":"e9a8884d-ccd1-40b1-b3c8-aceeaf06b34f","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"bd4b51e5-6bab-456e-ba3c-a726b67a5b70","merchant_code":"MCTSYDUE","status":"failed","transaction_id":"5d5322da-8e63-4bb9-b9db-927f2630cbf6"},"timestamp":"2026-02-20T20:25:55.333812Z"}
+2026-02-20 17:25:55 - Order atualizada: bd4b51e5-6bab-456e-ba3c-a726b67a5b70 -> FAILED
+2026-02-20 17:29:48 - Webhook recebido: {"id":"dd082300-99f4-4f7a-8573-9682fa1b0756","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"e3a1c3cb-e47c-41d2-ba37-2ad5be8b2936","merchant_code":"MCTSYDUE","status":"failed","transaction_id":"5a7be303-a46a-4096-8f1a-40a16aa62bcb"},"timestamp":"2026-02-20T20:29:48.141277Z"}
+2026-02-20 17:29:48 - Order atualizada: e3a1c3cb-e47c-41d2-ba37-2ad5be8b2936 -> FAILED
+2026-02-20 17:42:31 - Webhook recebido: {"id":"caf2964b-96e8-424c-9d1e-cee2aed2c0b3","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"18d62b8b-793d-4592-919b-20e9955de31b","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T18:26:57.532295Z"}
+2026-02-20 17:42:31 - Pedido não encontrado: 18d62b8b-793d-4592-919b-20e9955de31b
+2026-02-20 17:55:31 - Webhook recebido: {"id":"2994173f-007a-49ec-8c07-a4339fb9e097","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"837b20af-055d-4cbb-a9f9-0872b725f558","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:48:14.556350Z"}
+2026-02-20 17:55:31 - Pedido não encontrado: 837b20af-055d-4cbb-a9f9-0872b725f558
+2026-02-20 17:56:49 - Webhook recebido: {"id":"54fd3406-a0bf-448f-9eb7-218a86d8b87c","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"f807504b-f76c-4d47-96a2-2a96a9ea3776","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:49:33.084252Z"}
+2026-02-20 17:56:49 - Pedido não encontrado: f807504b-f76c-4d47-96a2-2a96a9ea3776
+2026-02-20 19:03:48 - Webhook recebido: {"id":"2994173f-007a-49ec-8c07-a4339fb9e097","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"837b20af-055d-4cbb-a9f9-0872b725f558","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:48:14.556350Z"}
+2026-02-20 19:03:48 - Pedido não encontrado: 837b20af-055d-4cbb-a9f9-0872b725f558
+2026-02-20 19:05:06 - Webhook recebido: {"id":"54fd3406-a0bf-448f-9eb7-218a86d8b87c","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"f807504b-f76c-4d47-96a2-2a96a9ea3776","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:49:33.084252Z"}
+2026-02-20 19:05:06 - Pedido não encontrado: f807504b-f76c-4d47-96a2-2a96a9ea3776
+2026-02-20 19:27:44 - Webhook recebido: {"id":"07f574da-e601-4a20-8153-f2c9b18a80ab","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"52e722cc-7274-4d12-b3f2-f140c6871350","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:38.726106Z"}
+2026-02-20 19:27:44 - Pedido não encontrado: 52e722cc-7274-4d12-b3f2-f140c6871350
+2026-02-20 19:27:46 - Webhook recebido: {"id":"2b495b78-232a-449f-8f50-4204a3d9f0ae","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"22d91832-15c4-40cd-bdca-242bdfdd4847","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:42.930095Z"}
+2026-02-20 19:27:46 - Pedido não encontrado: 22d91832-15c4-40cd-bdca-242bdfdd4847
+2026-02-20 19:59:03 - Webhook recebido: {"id":"caf2964b-96e8-424c-9d1e-cee2aed2c0b3","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"18d62b8b-793d-4592-919b-20e9955de31b","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T18:26:57.532295Z"}
+2026-02-20 19:59:03 - Pedido não encontrado: 18d62b8b-793d-4592-919b-20e9955de31b
+2026-02-20 21:20:21 - Webhook recebido: {"id":"2994173f-007a-49ec-8c07-a4339fb9e097","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"837b20af-055d-4cbb-a9f9-0872b725f558","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:48:14.556350Z"}
+2026-02-20 21:20:21 - Pedido não encontrado: 837b20af-055d-4cbb-a9f9-0872b725f558
+2026-02-20 21:21:39 - Webhook recebido: {"id":"54fd3406-a0bf-448f-9eb7-218a86d8b87c","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"f807504b-f76c-4d47-96a2-2a96a9ea3776","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:49:33.084252Z"}
+2026-02-20 21:21:39 - Pedido não encontrado: f807504b-f76c-4d47-96a2-2a96a9ea3776
+2026-02-21 00:00:51 - Webhook recebido: {"id":"2b495b78-232a-449f-8f50-4204a3d9f0ae","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"22d91832-15c4-40cd-bdca-242bdfdd4847","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:42.930095Z"}
+2026-02-21 00:00:51 - Pedido não encontrado: 22d91832-15c4-40cd-bdca-242bdfdd4847
+2026-02-21 00:00:51 - Webhook recebido: {"id":"07f574da-e601-4a20-8153-f2c9b18a80ab","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"52e722cc-7274-4d12-b3f2-f140c6871350","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T17:55:38.726106Z"}
+2026-02-21 00:00:51 - Pedido não encontrado: 52e722cc-7274-4d12-b3f2-f140c6871350
+2026-02-21 00:32:08 - Webhook recebido: {"id":"caf2964b-96e8-424c-9d1e-cee2aed2c0b3","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"18d62b8b-793d-4592-919b-20e9955de31b","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T18:26:57.532295Z"}
+2026-02-21 00:32:08 - Pedido não encontrado: 18d62b8b-793d-4592-919b-20e9955de31b
+2026-02-21 01:53:25 - Webhook recebido: {"id":"2994173f-007a-49ec-8c07-a4339fb9e097","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"837b20af-055d-4cbb-a9f9-0872b725f558","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:48:14.556350Z"}
+2026-02-21 01:53:25 - Pedido não encontrado: 837b20af-055d-4cbb-a9f9-0872b725f558
+2026-02-21 01:54:43 - Webhook recebido: {"id":"54fd3406-a0bf-448f-9eb7-218a86d8b87c","event_type":"solo.transaction.updated","payload":{"client_transaction_id":"f807504b-f76c-4d47-96a2-2a96a9ea3776","merchant_code":"MCTSYDUE","status":"failed","transaction_id":null},"timestamp":"2026-02-20T19:49:33.084252Z"}
+2026-02-21 01:54:43 - Pedido não encontrado: f807504b-f76c-4d47-96a2-2a96a9ea3776

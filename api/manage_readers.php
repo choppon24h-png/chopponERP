@@ -37,6 +37,14 @@ $affiliate_key = !empty($payment_cfg['affiliate_key']) ? $payment_cfg['affiliate
 // merchant_code: se salvo no banco, usa; caso contrário usa a constante
 $merchant_code = !empty($payment_cfg['merchant_code']) ? $payment_cfg['merchant_code'] : SUMUP_MERCHANT_CODE;
 
+function paymentLog(string $message, array $context = []): void {
+    if (class_exists('Logger') && method_exists('Logger', 'payment')) {
+        Logger::payment($message, $context);
+    } else {
+        Logger::info($message, $context);
+    }
+}
+
 // Garantir que a tabela sumup_readers existe
 $conn->exec("CREATE TABLE IF NOT EXISTS `sumup_readers` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -140,29 +148,81 @@ function getReaderStatus(string $reader_id): array {
 // ACTION: check_api — Verificar se o token SumUp está válido
 // ─────────────────────────────────────────────────────────────
 if ($action === 'check_api') {
-    $url = "https://api.sumup.com/v0.1/merchants/{$merchant_code}";
-    $ch  = curl_init($url);
+    // Probe principal: endpoint usado na integracao de leitoras
+    $probe_readers = sumupRequest('GET', 'readers');
+    $code = intval($probe_readers['http_code']);
+    $data = $probe_readers['data'] ?? [];
+
+    paymentLog('SumUp check_api probe', [
+        'http_code' => $code,
+        'merchant_code' => $merchant_code,
+        'curl_error' => $probe_readers['curl_error'] ?? '',
+    ]);
+
+    if ($code === 200) {
+        $count = is_array($data) ? count($data) : 0;
+        echo json_encode([
+            'api_ok'   => true,
+            'merchant' => $merchant_code,
+            'name'     => '',
+            'details'  => "Token e merchant_code validados. Readers visiveis: {$count}.",
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // Probe secundario: valida se o token responde fora do contexto do merchant_code
+    $ch = curl_init('https://api.sumup.com/v0.1/checkouts?limit=1');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 10);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: Bearer {$sumup_token}"]);
-    $resp = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $resp_checkout = curl_exec($ch);
+    $code_checkout = intval(curl_getinfo($ch, CURLINFO_HTTP_CODE));
+    $err_checkout  = curl_error($ch);
     curl_close($ch);
 
-    if ($code === 200 && $resp) {
-        $data = json_decode($resp, true);
-        echo json_encode([
-            'api_ok'   => true,
-            'merchant' => $data['merchant_code'] ?? $merchant_code,
-            'name'     => $data['business_name'] ?? ($data['name'] ?? ''),
-        ], JSON_UNESCAPED_UNICODE);
-    } else {
-        $data = $resp ? json_decode($resp, true) : [];
-        echo json_encode([
-            'api_ok' => false,
-            'error'  => $data['message'] ?? $data['error_message'] ?? "HTTP {$code} — Token inválido ou expirado",
-        ], JSON_UNESCAPED_UNICODE);
+    $token_ok = ($code_checkout === 200);
+    $error_code = 'unknown_error';
+    $error_msg  = "Falha ao validar API SumUp (HTTP {$code}).";
+    $hint       = 'Verifique token, merchant code e permissoes da API key.';
+
+    if (in_array($code, [401, 403], true)) {
+        $error_code = 'auth_error';
+        $error_msg  = 'Token invalido, expirado ou sem escopo para Readers API.';
+        $hint       = 'Gere nova API key (sup_sk_) e valide permissoes da conta/merchant.';
+    } elseif ($code === 404 && $token_ok) {
+        $error_code = 'merchant_mismatch';
+        $error_msg  = 'Token valido, mas merchant_code nao encontrado para Readers API.';
+        $hint       = 'Confirme se o Merchant Code configurado corresponde ao mesmo account da API key.';
+    } elseif ($code === 404) {
+        $error_code = 'endpoint_or_auth';
+        $error_msg  = 'A API respondeu 404 na Readers API.';
+        $hint       = 'Pode ser merchant_code incorreto ou token sem acesso ao recurso de leitoras.';
+    } elseif (!empty($probe_readers['curl_error'])) {
+        $error_code = 'network_error';
+        $error_msg  = 'Erro de rede ao consultar SumUp.';
+        $hint       = 'Verifique DNS/firewall/SSL e conectividade do servidor.';
     }
+
+    paymentLog('SumUp check_api falhou', [
+        'error_code' => $error_code,
+        'http_readers' => $code,
+        'http_checkouts' => $code_checkout,
+        'token_ok' => $token_ok,
+        'merchant_code' => $merchant_code,
+        'raw_readers' => $probe_readers['raw'] ?? '',
+        'raw_checkouts' => $resp_checkout,
+        'curl_error_readers' => $probe_readers['curl_error'] ?? '',
+        'curl_error_checkouts' => $err_checkout,
+    ]);
+
+    echo json_encode([
+        'api_ok'         => false,
+        'error_code'     => $error_code,
+        'error'          => $error_msg . ' ' . $hint . " (Readers HTTP {$code}; Checkouts HTTP {$code_checkout})",
+        'hint'           => $hint,
+        'http_readers'   => $code,
+        'http_checkouts' => $code_checkout,
+    ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 

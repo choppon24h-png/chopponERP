@@ -21,7 +21,8 @@ $arquivos_log = [
     'royalties' => "../../logs/royalties_{$mes_ano}.log",
     'stripe' => "../../logs/stripe_{$mes_ano}.log",
     'cora' => "../../logs/cora_{$mes_ano}.log",
-    'email' => "../../logs/email_{$mes_ano}.log"
+    'email' => "../../logs/email_{$mes_ano}.log",
+    'payments' => "../../logs/paymentslogs.log"
 ];
 
 if (!isset($arquivos_log[$modulo])) {

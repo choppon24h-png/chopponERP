@@ -106,6 +106,19 @@ if ($json && isset($json->id)) {
                 'status' => $status,
                 'transaction_id' => $transaction_id
             ]);
+            Logger::payment("SumUp webhook recebido", [
+                'checkout_id' => $checkout_id,
+                'status' => $status,
+                'transaction_id' => $transaction_id
+            ]);
+
+            if (in_array($status, ['FAILED', 'CANCELED', 'CANCELLED'])) {
+                Logger::payment("SumUp webhook com falha/cancelamento", [
+                    'checkout_id' => $checkout_id,
+                    'status' => $status,
+                    'raw' => $raw_data
+                ]);
+            }
             
             // Enviar notificação Telegram se pagamento aprovado
             if (in_array($status, ['PAID', 'SUCCESSFUL', 'APPROVED'])) {

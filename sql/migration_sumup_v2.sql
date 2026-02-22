@@ -42,6 +42,10 @@ ALTER TABLE `payment`
         COMMENT 'Chave de afiliado SumUp — obrigatória para Cloud API (leitoras Solo)';
 
 ALTER TABLE `payment`
+    ADD COLUMN `affiliate_app_id` VARCHAR(120) NULL DEFAULT NULL
+        COMMENT 'App Identifier cadastrado na Affiliate Key';
+
+ALTER TABLE `payment`
     ADD COLUMN `merchant_code` VARCHAR(50) NULL DEFAULT NULL
         COMMENT 'Merchant Code SumUp (sobrescreve constante do config.php se preenchido)';
 

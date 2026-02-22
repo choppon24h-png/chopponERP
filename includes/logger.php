@@ -135,6 +135,13 @@ class Logger {
     public static function webhook($message, $context = []) {
         self::write(self::INFO, $message, $context, 'webhook.log');
     }
+
+    /**
+     * Log de pagamentos (integrações de gateways)
+     */
+    public static function payment($message, $context = []) {
+        self::write(self::INFO, $message, $context, 'paymentslogs.log');
+    }
     
     /**
      * Log de SQL (para debug)

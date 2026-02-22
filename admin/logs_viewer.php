@@ -24,7 +24,8 @@ $arquivos_log = [
     'royalties' => "../logs/royalties_{$mes_ano}.log",
     'stripe' => "../logs/stripe_{$mes_ano}.log",
     'cora' => "../logs/cora_{$mes_ano}.log",
-    'email' => "../logs/email_{$mes_ano}.log"
+    'email' => "../logs/email_{$mes_ano}.log",
+    'payments' => "../logs/paymentslogs.log"
 ];
 
 $arquivo_log = $arquivos_log[$modulo] ?? $arquivos_log['royalties'];
@@ -124,6 +125,7 @@ function colorirLog($linha) {
 .badge-stripe { background: #635bff; color: white; }
 .badge-cora { background: #00a868; color: white; }
 .badge-email { background: #dc3545; color: white; }
+.badge-payments { background: #fd7e14; color: white; }
 </style>
 
 <div class="container-fluid mt-4">
@@ -184,6 +186,9 @@ function colorirLog($linha) {
                     </option>
                     <option value="email" <?= $modulo === 'email' ? 'selected' : '' ?>>
                         E-mail
+                    </option>
+                    <option value="payments" <?= $modulo === 'payments' ? 'selected' : '' ?>>
+                        Pagamentos / SumUp
                     </option>
                 </select>
             </div>

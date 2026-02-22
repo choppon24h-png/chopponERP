@@ -18,6 +18,7 @@ if (!isAdminGeral()) {
 
 $logFiles = [
     'system.log' => 'Sistema Geral',
+    'paymentslogs.log' => 'Pagamentos / SumUp',
     'auth.log' => 'Autenticação',
     'security.log' => 'Segurança',
     'api.log' => 'API REST',

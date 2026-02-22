@@ -665,3 +665,19 @@ O sistema gera logs em:
 
 Para dúvidas ou problemas:
 - Email: choppon24h@gmail.com
+
+## Diagnostico SumUp Cloud API (Atualizacao 2026-02-22)
+
+1. Configure em **Admin > Pagamentos**:
+   - `token_sumup` (`sup_sk_...`)
+   - `affiliate_key` (`sup_afk_...`)
+   - `affiliate_app_id` (App Identifier cadastrado na Affiliate Key)
+2. Na SumUp Solo, sem `Connections > API > Connect` a leitora fica pareada mas OFFLINE.
+3. Status esperado no dispositivo para transacionar: `Connected - Ready to transact`.
+4. Erros comuns:
+   - `422 / READER_OFFLINE`: leitora sem conexao ativa na API.
+   - `401/403`: token invalido/sem escopo.
+   - `404` em Readers API com token valido em checkouts: `merchant_code` divergente.
+5. Logs de integracao:
+   - `/logs/paymentslogs.log` (check_api, checkout e webhook)
+   - `/logs/webhook.log`

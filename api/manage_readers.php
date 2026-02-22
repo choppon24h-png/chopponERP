@@ -299,6 +299,14 @@ if ($action === 'create') {
     $model     = $reader['device']['model'] ?? null;
     $status    = $reader['status'] ?? 'processing';
 
+    // Revalidar status imediatamente no endpoint de retrieve para reduzir efeito de latencia
+    $r2 = sumupRequest('GET', "readers/{$reader_id}", [], 10);
+    if ($r2['http_code'] === 200 && !empty($r2['data'])) {
+        $serial = $r2['data']['device']['identifier'] ?? $serial;
+        $model  = $r2['data']['device']['model'] ?? $model;
+        $status = $r2['data']['status'] ?? $status;
+    }
+
     // Salvar no banco
     $stmt = $conn->prepare("
         INSERT INTO sumup_readers (reader_id, name, serial, model, status, estabelecimento_id, created_at, updated_at)

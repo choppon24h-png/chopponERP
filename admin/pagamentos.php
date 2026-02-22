@@ -641,7 +641,15 @@ function testarNovaLeitora() {
                 dadosNovaLeitora = data;
                 dadosNovaLeitora.estabelecimento_id = estab;
                 var statusIcon = data.online ? '🟢' : '🟡';
-                var statusTxt  = data.online ? 'ONLINE' : 'Pareado — Aguardando dispositivo conectar-se à API';
+                var sumupStatus = (data.sumup_status || data.status || '').toLowerCase();
+                var statusTxt = 'OFFLINE';
+                if (data.online) {
+                    statusTxt = 'ONLINE';
+                } else if (sumupStatus === 'processing') {
+                    statusTxt = 'PROCESSING — Aguardando confirmação no dispositivo';
+                } else if (sumupStatus === 'paired') {
+                    statusTxt = 'PAIRED — Pareado, porém sem conexão ativa com a API';
+                }
                 var html = '<strong>' + statusIcon + ' Leitora vinculada com sucesso!</strong><br>';
                 html += '<table style="margin-top:10px;font-size:12px;width:100%;border-collapse:collapse;">';
                 html += '<tr><td style="padding:3px 8px 3px 0;width:130px;"><strong>Reader ID:</strong></td><td><code>' + escHtml(data.reader_id) + '</code></td></tr>';

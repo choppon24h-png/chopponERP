@@ -430,3 +430,5 @@
 [2026-02-22 10:32:12] [SECURITY] [IP:200.229.247.54] [POST /index.php] Login bem-sucedido | Context: {"user_id":1,"email":"choppon24h@gmail.com","type":1}
 [2026-02-22 11:28:06] [SECURITY] [IP:200.229.247.54] [POST /index.php] Tentativa de login | Context: {"email":"choppon24h@gmail.com"}
 [2026-02-22 11:28:07] [SECURITY] [IP:200.229.247.54] [POST /index.php] Login bem-sucedido | Context: {"user_id":1,"email":"choppon24h@gmail.com","type":1}
+[2026-02-22 14:09:54] [SECURITY] [IP:200.229.247.54] [POST /index.php] Tentativa de login | Context: {"email":"choppon24h@gmail.com"}
+[2026-02-22 14:09:54] [SECURITY] [IP:200.229.247.54] [POST /index.php] Login bem-sucedido | Context: {"user_id":1,"email":"choppon24h@gmail.com","type":1}

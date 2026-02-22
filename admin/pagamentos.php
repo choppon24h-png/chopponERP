@@ -241,6 +241,11 @@ require_once '../includes/header.php';
                     <i class="fas fa-spinner fa-spin"></i> Verificando...
                 </div>
             </div>
+            <div class="card-body" style="border-top:1px solid #eee;padding-top:10px;">
+                <a href="sumup_cloud_tester.php" class="btn btn-sm btn-outline-primary" style="width:100%;">
+                    <i class="fas fa-vial"></i> Abrir Tester Cloud API
+                </a>
+            </div>
         </div>
     </div>
 </div>

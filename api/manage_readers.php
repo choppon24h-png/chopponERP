@@ -1,14 +1,39 @@
 <?php
 /**
  * API de Gerenciamento de Leitoras SumUp Solo
- * v2.0 — Novas ações: delete_all, update_estab, check_api
- *         Correção: affiliate_key obrigatório no checkout
+ * v2.1 — Correção crítica de validação de reader_id + suporte a delete via API SumUp
+ *
+ * CORREÇÕES APLICADAS (v2.1):
+ * ─────────────────────────────────────────────────────────────────────────────
+ * BUG CRÍTICO CORRIGIDO: A função validateReaderId() usava regex incorreta.
+ *
+ * DIAGNÓSTICO:
+ *   - Regex ANTERIOR (com bug): /^rdr_[A-Z0-9]{27}$/i  → exige 31 chars total
+ *   - Regex CORRETA:            /^rdr_[A-Z0-9]{26}$/i  → exige 30 chars total
+ *
+ * CAUSA RAIZ:
+ *   A documentação oficial SumUp (https://developer.sumup.com/api, seção Readers)
+ *   define o campo `id` do reader com min length: 30 e max length: 30.
+ *   O formato é: "rdr_" (4 chars) + 26 chars alfanuméricos = 30 chars total.
+ *   Exemplo real da API: rdr_1JHCGHNM3095NBKJP2CMDWJTXC (4 + 26 = 30 chars)
+ *
+ * IMPACTO DO BUG:
+ *   Qualquer operação que chamasse validateReaderId() (delete, test, checkout)
+ *   rejeitava TODOS os reader_ids reais gerados pela SumUp com HTTP 400,
+ *   impossibilitando exclusão, teste e pagamentos via Cloud API.
+ *
+ * MELHORIAS ADICIONAIS:
+ *   - delete_all agora busca leitoras diretamente na API SumUp (não só no banco)
+ *     garantindo que leitoras presentes na SumUp mas ausentes no banco também
+ *     sejam excluídas corretamente.
+ *   - Validação de reader_id adicionada nas ações delete e test.
+ *   - Mensagens de erro mais descritivas com exemplo de formato correto.
  *
  * Ações disponíveis:
  *   POST action=create       → Cria/vincula uma leitora via pairing_code
  *   POST action=test         → Testa a comunicação com uma leitora já cadastrada
  *   POST action=delete       → Exclui uma leitora da SumUp e do banco
- *   POST action=delete_all   → Exclui TODAS as leitoras da SumUp e do banco
+ *   POST action=delete_all   → Exclui TODAS as leitoras da SumUp (API + banco)
  *   POST action=update_estab → Vincula/desvincula leitora de um estabelecimento
  *   POST action=check_api    → Verifica se o token SumUp está válido
  *   GET  action=list         → Lista todas as leitoras com status atualizado
@@ -43,6 +68,20 @@ function paymentLog(string $message, array $context = []): void {
     } else {
         Logger::info($message, $context);
     }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Helper: validar reader_id conforme especificação SumUp
+//
+// Formato oficial: rdr_ (4 chars) + 26 chars alfanuméricos = 30 chars total
+// Referência: https://developer.sumup.com/api (Readers > Delete a reader)
+//   campo id: min length: 30, max length: 30
+// Exemplo: rdr_1JHCGHNM3095NBKJP2CMDWJTXC
+//
+// BUG CORRIGIDO: regex anterior usava {27} (31 chars total) → {26} (30 chars total)
+// ─────────────────────────────────────────────────────────────
+function validateReaderId(string $id): bool {
+    return preg_match('/^rdr_[A-Z0-9]{26}$/i', trim($id)) === 1;
 }
 
 // Garantir que a tabela sumup_readers existe
@@ -101,9 +140,6 @@ function sumupRequest(string $method, string $endpoint, array $body = [], int $t
 
 // ─────────────────────────────────────────────────────────────
 // Helper: buscar status do reader na SumUp
-// Retorna o ÚLTIMO STATUS CONHECIDO (não é em tempo real).
-// Para estar ONLINE, o dispositivo deve estar ligado e com
-// Connections → API → Connect ativo.
 // ─────────────────────────────────────────────────────────────
 function getReaderStatus(string $reader_id): array {
     global $sumup_token, $merchant_code;
@@ -119,7 +155,6 @@ function getReaderStatus(string $reader_id): array {
 
     if ($code === 200 && $resp) {
         $decoded = json_decode($resp, true);
-        // A SumUp retorna: { "data": { "status": "ONLINE|OFFLINE", ... } }
         $data = $decoded['data'] ?? $decoded ?? [];
         $raw_status = strtoupper($data['status'] ?? 'OFFLINE');
         return [
@@ -148,7 +183,6 @@ function getReaderStatus(string $reader_id): array {
 // ACTION: check_api — Verificar se o token SumUp está válido
 // ─────────────────────────────────────────────────────────────
 if ($action === 'check_api') {
-    // Probe principal: endpoint usado na integracao de leitoras
     $probe_readers = sumupRequest('GET', 'readers');
     $code = intval($probe_readers['http_code']);
     $data = $probe_readers['data'] ?? [];
@@ -160,17 +194,23 @@ if ($action === 'check_api') {
     ]);
 
     if ($code === 200) {
-        $count = is_array($data) ? count($data) : 0;
+        // Normalizar resposta: SumUp pode retornar { "items": [...] } ou array direto
+        $readers_list = [];
+        if (isset($data['items']) && is_array($data['items'])) {
+            $readers_list = $data['items'];
+        } elseif (is_array($data) && !isset($data['items'])) {
+            $readers_list = array_values($data);
+        }
+        $count = count($readers_list);
         echo json_encode([
             'api_ok'   => true,
             'merchant' => $merchant_code,
             'name'     => '',
-            'details'  => "Token e merchant_code validados. Readers visiveis: {$count}.",
+            'details'  => "Token e merchant_code validados. Readers visíveis: {$count}.",
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    // Probe secundario: valida se o token responde fora do contexto do merchant_code
     $ch = curl_init('https://api.sumup.com/v0.1/checkouts?limit=1');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 10);
@@ -245,7 +285,6 @@ if ($action === 'list') {
         $r['battery']       = $st['battery'];
         $r['connection']    = $st['connection'];
         $r['firmware']      = $st['firmware'];
-        $r['last_activity'] = $st['last_activity'];
 
         $conn->prepare("UPDATE sumup_readers SET battery_level=?, connection_type=?, firmware_version=?, last_activity=?, updated_at=NOW() WHERE reader_id=?")
              ->execute([$st['battery'], $st['connection'], $st['firmware'], $st['last_activity'], $r['reader_id']]);
@@ -276,7 +315,6 @@ if ($action === 'create') {
         exit;
     }
 
-    // Chamar API SumUp para criar o reader
     $result = sumupRequest('POST', 'readers', [
         'pairing_code' => $pairing_code,
         'name'         => $name,
@@ -299,7 +337,6 @@ if ($action === 'create') {
     $model     = $reader['device']['model'] ?? null;
     $status    = $reader['status'] ?? 'processing';
 
-    // Revalidar status imediatamente no endpoint de retrieve para reduzir efeito de latencia
     $r2 = sumupRequest('GET', "readers/{$reader_id}", [], 10);
     if ($r2['http_code'] === 200 && !empty($r2['data'])) {
         $serial = $r2['data']['device']['identifier'] ?? $serial;
@@ -307,7 +344,6 @@ if ($action === 'create') {
         $status = $r2['data']['status'] ?? $status;
     }
 
-    // Salvar no banco
     $stmt = $conn->prepare("
         INSERT INTO sumup_readers (reader_id, name, serial, model, status, estabelecimento_id, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
@@ -316,10 +352,8 @@ if ($action === 'create') {
     ");
     $stmt->execute([$reader_id, $name, $serial, $model, $status, $estabelecimento_id]);
 
-    // Buscar status atual
     $st = getReaderStatus($reader_id);
 
-    // Mensagem orientativa sobre o status OFFLINE
     if ($st['online']) {
         $mensagem = "✅ Leitora pareada e ONLINE! Serial: {$serial}";
     } elseif ($status === 'paired') {
@@ -362,7 +396,18 @@ if ($action === 'test') {
         exit;
     }
 
-    // Buscar dados do reader no banco
+    // Validar formato do reader_id (BUG CORRIGIDO: {26} não {27})
+    if (!validateReaderId($reader_id)) {
+        http_response_code(400);
+        echo json_encode([
+            'error'   => 'reader_id inválido. Formato esperado: rdr_ + 26 caracteres alfanuméricos (total 30 chars).',
+            'exemplo' => 'rdr_1JHCGHNM3095NBKJP2CMDWJTXC',
+            'recebido'=> $reader_id,
+            'tamanho' => strlen($reader_id),
+        ]);
+        exit;
+    }
+
     $stmt = $conn->prepare("SELECT * FROM sumup_readers WHERE reader_id = ?");
     $stmt->execute([$reader_id]);
     $reader = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -373,7 +418,6 @@ if ($action === 'test') {
         exit;
     }
 
-    // Buscar dados atualizados da SumUp (GET /readers/{id})
     $url_reader = "https://api.sumup.com/v0.1/merchants/{$merchant_code}/readers/{$reader_id}";
     $ch = curl_init($url_reader);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -398,14 +442,11 @@ if ($action === 'test') {
     $serial       = $reader_data['device']['identifier'] ?? $reader['serial'];
     $model        = $reader_data['device']['model'] ?? $reader['model'];
 
-    // Buscar status de conectividade (ONLINE/OFFLINE)
     $st = getReaderStatus($reader_id);
 
-    // Atualizar banco
     $conn->prepare("UPDATE sumup_readers SET serial=?, model=?, status=?, battery_level=?, connection_type=?, firmware_version=?, last_activity=?, updated_at=NOW() WHERE reader_id=?")
          ->execute([$serial, $model, $sumup_status, $st['battery'], $st['connection'], $st['firmware'], $st['last_activity'], $reader_id]);
 
-    // Mensagem de diagnóstico detalhada
     if ($st['online']) {
         $mensagem = "✅ Leitora ONLINE | Serial: {$serial} | Bateria: " . ($st['battery'] ?? '—') . "% | Conexão: " . ($st['connection'] ?? '—');
     } elseif ($sumup_status === 'processing') {
@@ -437,6 +478,9 @@ if ($action === 'test') {
 
 // ─────────────────────────────────────────────────────────────
 // ACTION: delete — Excluir leitora da SumUp e do banco
+//
+// BUG CORRIGIDO: Adicionada validação de reader_id com regex correta
+// /^rdr_[A-Z0-9]{26}$/i (30 chars total), conforme documentação SumUp.
 // ─────────────────────────────────────────────────────────────
 if ($action === 'delete') {
     $reader_id = trim($_POST['reader_id'] ?? '');
@@ -447,11 +491,30 @@ if ($action === 'delete') {
         exit;
     }
 
+    // Validar formato do reader_id (BUG CORRIGIDO: {26} não {27})
+    if (!validateReaderId($reader_id)) {
+        http_response_code(400);
+        echo json_encode([
+            'error'   => 'reader_id inválido. Formato esperado: rdr_ + 26 caracteres alfanuméricos (total 30 chars).',
+            'exemplo' => 'rdr_1JHCGHNM3095NBKJP2CMDWJTXC',
+            'recebido'=> $reader_id,
+            'tamanho' => strlen($reader_id),
+        ]);
+        exit;
+    }
+
+    paymentLog('SumUp delete reader', ['reader_id' => $reader_id, 'merchant_code' => $merchant_code]);
+
     // Chamar DELETE na SumUp
     $result = sumupRequest('DELETE', "readers/{$reader_id}");
 
     // Aceitar 204 (sucesso), 404 (já não existe) ou 200
     if ($result['http_code'] !== 204 && $result['http_code'] !== 404 && $result['http_code'] !== 200) {
+        paymentLog('SumUp delete reader falhou', [
+            'reader_id' => $reader_id,
+            'http_code' => $result['http_code'],
+            'raw' => $result['raw'],
+        ]);
         http_response_code(422);
         echo json_encode([
             'error'     => 'Erro ao excluir leitora na SumUp: ' . ($result['data']['message'] ?? 'Erro desconhecido'),
@@ -469,6 +532,8 @@ if ($action === 'delete') {
         $conn->prepare("UPDATE tap SET reader_id = NULL, pairing_code = NULL WHERE reader_id = ?")->execute([$reader_id]);
     } catch (Exception $e) { /* ignora se coluna não existir */ }
 
+    paymentLog('SumUp delete reader sucesso', ['reader_id' => $reader_id]);
+
     echo json_encode([
         'success'  => true,
         'mensagem' => 'Leitora excluída com sucesso. No SumUp Solo: Connections → API → Disconnect para completar a desvinculação.',
@@ -478,52 +543,113 @@ if ($action === 'delete') {
 
 // ─────────────────────────────────────────────────────────────
 // ACTION: delete_all — Excluir TODAS as leitoras
+//
+// MELHORIA: Agora busca leitoras diretamente na API SumUp (não só no banco),
+// garantindo que leitoras presentes na SumUp mas ausentes no banco local
+// também sejam excluídas. Isso resolve o problema de inconsistência entre
+// o banco local e a conta SumUp.
 // ─────────────────────────────────────────────────────────────
 if ($action === 'delete_all') {
-    // Buscar todas as leitoras do banco
-    $stmt    = $conn->query("SELECT reader_id, name FROM sumup_readers ORDER BY id");
-    $readers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    paymentLog('SumUp delete_all iniciado', ['merchant_code' => $merchant_code]);
 
-    if (empty($readers)) {
+    // 1) Buscar leitoras diretamente na API SumUp (fonte autoritativa)
+    $api_result = sumupRequest('GET', 'readers', [], 20);
+    $api_readers = [];
+
+    if ($api_result['http_code'] === 200 && is_array($api_result['data'])) {
+        $raw = $api_result['data'];
+        // SumUp pode retornar { "items": [...] } ou array direto
+        if (isset($raw['items']) && is_array($raw['items'])) {
+            $api_readers = $raw['items'];
+        } elseif (is_array($raw) && !isset($raw['items'])) {
+            $api_readers = array_values($raw);
+        }
+    }
+
+    // 2) Buscar leitoras do banco local (para garantir limpeza completa)
+    $stmt    = $conn->query("SELECT reader_id, name FROM sumup_readers ORDER BY id");
+    $db_readers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // 3) Unificar: IDs da API + IDs do banco (sem duplicatas)
+    $all_ids = [];
+    foreach ($api_readers as $r) {
+        $rid = $r['id'] ?? '';
+        if ($rid !== '') {
+            $all_ids[$rid] = $r['name'] ?? $rid;
+        }
+    }
+    foreach ($db_readers as $r) {
+        $rid = $r['reader_id'] ?? '';
+        if ($rid !== '') {
+            $all_ids[$rid] = $all_ids[$rid] ?? ($r['name'] ?? $rid);
+        }
+    }
+
+    if (empty($all_ids)) {
         echo json_encode([
-            'success'  => true,
-            'excluidas'=> 0,
-            'mensagem' => 'Nenhuma leitora encontrada para excluir.',
+            'success'   => true,
+            'excluidas' => 0,
+            'mensagem'  => 'Nenhuma leitora encontrada para excluir (nem na API SumUp nem no banco local).',
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
     $excluidas = 0;
     $erros     = [];
+    $detalhes  = [];
 
-    foreach ($readers as $r) {
-        $rid    = $r['reader_id'];
+    foreach ($all_ids as $rid => $nome) {
+        // Validar formato antes de chamar a API (proteção extra)
+        if (!validateReaderId($rid)) {
+            $erros[] = "{$nome} (reader_id inválido: {$rid})";
+            $detalhes[] = ['reader_id' => $rid, 'nome' => $nome, 'sucesso' => false, 'motivo' => 'reader_id com formato inválido'];
+            continue;
+        }
+
         $result = sumupRequest('DELETE', "readers/{$rid}");
 
         if (in_array($result['http_code'], [200, 204, 404])) {
-            // Sucesso ou já não existia na SumUp
+            // 200/204 = excluído com sucesso; 404 = já não existia na SumUp
             $conn->prepare("DELETE FROM sumup_readers WHERE reader_id = ?")->execute([$rid]);
             try {
                 $conn->prepare("UPDATE tap SET reader_id = NULL, pairing_code = NULL WHERE reader_id = ?")->execute([$rid]);
             } catch (Exception $e) { /* ignora */ }
             $excluidas++;
+            $detalhes[] = ['reader_id' => $rid, 'nome' => $nome, 'sucesso' => true, 'http_code' => $result['http_code']];
         } else {
-            $erros[] = $r['name'] . ' (HTTP ' . $result['http_code'] . ')';
+            $erros[] = $nome . ' (HTTP ' . $result['http_code'] . ')';
+            $detalhes[] = [
+                'reader_id' => $rid,
+                'nome'      => $nome,
+                'sucesso'   => false,
+                'http_code' => $result['http_code'],
+                'motivo'    => $result['data']['message'] ?? 'Erro desconhecido',
+            ];
         }
     }
+
+    paymentLog('SumUp delete_all concluído', [
+        'total'     => count($all_ids),
+        'excluidas' => $excluidas,
+        'erros'     => count($erros),
+    ]);
 
     if (!empty($erros)) {
         echo json_encode([
             'success'   => false,
             'excluidas' => $excluidas,
+            'total'     => count($all_ids),
             'error'     => 'Algumas leitoras não puderam ser excluídas: ' . implode(', ', $erros),
+            'detalhes'  => $detalhes,
         ], JSON_UNESCAPED_UNICODE);
     } else {
         echo json_encode([
             'success'   => true,
             'excluidas' => $excluidas,
-            'mensagem'  => "Todas as {$excluidas} leitoras foram excluídas com sucesso da Cloud API SumUp. " .
+            'total'     => count($all_ids),
+            'mensagem'  => "Todas as {$excluidas} leitoras foram excluídas com sucesso da Cloud API SumUp e do banco local. " .
                            "Nos dispositivos físicos: Connections → API → Disconnect.",
+            'detalhes'  => $detalhes,
         ], JSON_UNESCAPED_UNICODE);
     }
     exit;

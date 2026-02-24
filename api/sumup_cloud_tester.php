@@ -2,7 +2,7 @@
 /**
  * API de teste SumUp Cloud API - VERSÃO MELHORADA
  * Uso interno do painel admin para validar comunicacao com leitora.
- * 
+ *
  * MELHORIAS IMPLEMENTADAS:
  * - Funcionalidade de deleção de readers (individual e em lote)
  * - Logging robusto com contexto e persistência
@@ -10,8 +10,15 @@
  * - Otimização de requisições (batch operations)
  * - Melhor tratamento de erros
  * - Documentação inline completa
- * 
- * @version 2.0.0
+ *
+ * CORREÇÕES APLICADAS:
+ * - BUG CRÍTICO: validateReaderId() usava regex /^rdr_[A-Z0-9]{27}$/i (31 chars total)
+ *   Corrigido para /^rdr_[A-Z0-9]{26}$/i (30 chars total), conforme documentação oficial
+ *   SumUp: campo id do reader tem min length: 30, max length: 30.
+ *   Referência: https://developer.sumup.com/api (seção Readers > Delete a reader)
+ *   Exemplo de ID real: rdr_1JHCGHNM3095NBKJP2CMDWJTXC (4 + 26 = 30 chars)
+ *
+ * @version 2.1.0
  * @author ChopponERP Team
  */
 
@@ -85,9 +92,17 @@ class SumUpCloudLogger {
 class InputValidator {
     /**
      * Valida formato de reader_id (deve ser rdr_*)
+     *
+     * Formato oficial SumUp: rdr_ (4 chars) + 26 chars alfanuméricos = 30 chars total.
+     * Referência: https://developer.sumup.com/api — campo id: min length: 30, max length: 30
+     * Exemplo real: rdr_1JHCGHNM3095NBKJP2CMDWJTXC (30 chars)
+     *
+     * BUG CORRIGIDO: regex anterior usava {27} (31 chars total) → corrigido para {26} (30 chars total)
+     * O flag /i aceita maiúsculas e minúsculas, garantindo compatibilidade com qualquer case.
      */
     public static function validateReaderId(string $id): bool {
-        return preg_match('/^rdr_[A-Z0-9]{27}$/i', trim($id)) === 1;
+        // Aceita rdr_ + exatamente 26 chars alfanuméricos (case-insensitive) = 30 chars total
+        return preg_match('/^rdr_[A-Z0-9]{26}$/i', trim($id)) === 1;
     }
     
     /**
@@ -656,7 +671,7 @@ if ($action === 'delete_reader') {
         echo json_encode([
             'success' => false,
             'error' => 'reader_id obrigatorio e deve ser válido',
-            'example' => 'rdr_3MSAFM23CK82VSTT4BN6RWSQ65',
+            'example' => 'rdr_3MSAFM23CK82VSTT4BN6RWSQ65',  // 30 chars: rdr_ + 26 alfanumericos
         ]);
         exit;
     }

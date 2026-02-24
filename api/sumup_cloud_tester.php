@@ -290,7 +290,16 @@ if ($action === 'readers') {
         exit;
     }
 
-    $readers = $res['data'];
+    // SumUp retorna { "items": [...] } — extrair o array correto
+    $rawData = $res['data'];
+    $readers = [];
+    if (isset($rawData['items']) && is_array($rawData['items'])) {
+        $readers = $rawData['items'];
+    } elseif (is_array($rawData) && !isset($rawData['items'])) {
+        // Fallback: resposta já é array direto
+        $readers = array_values($rawData);
+    }
+
     foreach ($readers as &$r) {
         $rid = $r['id'] ?? '';
         if ($rid === '') {
@@ -380,12 +389,39 @@ if ($action === 'readers_db') {
         $url = "https://api.sumup.com/v0.1/merchants/{$cfg['merchant_code']}/readers";
         $res = sumupHttp('GET', $url, $cfg['token_sumup'], null, 20);
         if ($res['http_code'] === 200 && is_array($res['data'])) {
-            $logger->info('Using API fallback (DB empty)');
+            // SumUp retorna { "items": [...] } — normalizar para array plano
+            $apiData = $res['data'];
+            $apiReaders = [];
+            if (isset($apiData['items']) && is_array($apiData['items'])) {
+                $apiReaders = $apiData['items'];
+            } elseif (is_array($apiData) && !isset($apiData['items'])) {
+                $apiReaders = array_values($apiData);
+            }
+            // Enriquecer com status ao vivo
+            foreach ($apiReaders as &$ar) {
+                $rid = $ar['id'] ?? '';
+                $ar['reader_id'] = $rid;
+                if ($rid === '') continue;
+                $urlSt = "https://api.sumup.com/v0.1/merchants/{$cfg['merchant_code']}/readers/{$rid}/status";
+                $st = sumupHttp('GET', $urlSt, $cfg['token_sumup'], null, 10);
+                if ($st['http_code'] === 200) {
+                    $sd = $st['data']['data'] ?? $st['data'] ?? [];
+                    $ar['status_live'] = strtoupper((string) ($sd['status'] ?? ($ar['status'] ?? 'UNKNOWN')));
+                    $ar['battery_level'] = $sd['battery_level'] ?? null;
+                    $ar['connection_type'] = $sd['connection_type'] ?? null;
+                    $ar['last_activity'] = $sd['last_activity'] ?? null;
+                } else {
+                    $ar['status_live'] = strtoupper((string) ($ar['status'] ?? 'UNKNOWN'));
+                }
+                $ar['source'] = 'api_fallback';
+            }
+            unset($ar);
+            $logger->info('Using API fallback (DB empty)', ['count' => count($apiReaders)]);
             echo json_encode([
                 'success' => true,
                 'merchant_code' => $cfg['merchant_code'],
                 'source' => 'api_fallback',
-                'readers' => $res['data'],
+                'readers' => $apiReaders,
             ], JSON_UNESCAPED_UNICODE);
             exit;
         }
@@ -719,13 +755,32 @@ if ($action === 'delete_all_readers') {
         exit;
     }
 
-    $readers = $listRes['data'];
+    // SumUp retorna { "items": [...] } — extrair o array correto
+    $rawList = $listRes['data'];
+    $readers = [];
+    if (isset($rawList['items']) && is_array($rawList['items'])) {
+        $readers = $rawList['items'];
+    } elseif (is_array($rawList) && !isset($rawList['items'])) {
+        $readers = array_values($rawList);
+    }
+
     $results = [
         'total' => count($readers),
         'deleted' => 0,
         'failed' => 0,
         'details' => [],
+        'raw_api_response' => $rawList,
     ];
+
+    if (count($readers) === 0) {
+        $logger->warning('Delete all: no readers found to delete');
+        echo json_encode([
+            'success' => true,
+            'summary' => $results,
+            'message' => 'Nenhuma leitora encontrada para deletar.',
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
     // 2) Deletar cada reader
     foreach ($readers as $reader) {

@@ -287,21 +287,41 @@ async function loadConfig() {
 // Carregar Leitoras (Select)
 // ============================================================
 
+/**
+ * Normaliza o campo readers da resposta da API.
+ * A SumUp pode retornar: array direto, { items: [...] } ou objeto aninhado.
+ */
+function normalizeReaders(data) {
+    if (!data || !data.success) return [];
+    const r = data.readers;
+    if (Array.isArray(r)) return r;
+    if (r && Array.isArray(r.items)) return r.items;
+    if (r && typeof r === 'object') {
+        // Tenta extrair qualquer array dentro do objeto
+        const keys = Object.keys(r);
+        for (const k of keys) {
+            if (Array.isArray(r[k])) return r[k];
+        }
+    }
+    return [];
+}
+
 async function loadReaders() {
     const sel = document.getElementById('readerSelect');
     sel.innerHTML = '<option value="">Carregando leitoras...</option>';
     try {
         const resp = await fetch(TEST_API + '?action=readers_db');
         const data = await resp.json();
-        if (!data.success || !Array.isArray(data.readers) || data.readers.length === 0) {
+        const readers = normalizeReaders(data);
+        if (!data.success || readers.length === 0) {
             sel.innerHTML = '<option value="">Nenhuma leitora encontrada</option>';
-            setResult('Leitoras', data);
+            setResult('Leitoras (' + (data.source || 'sem fonte') + ')', data);
             await loadReadersTable();
             return;
         }
 
         sel.innerHTML = '<option value="">Selecione...</option>';
-        data.readers.forEach((r) => {
+        readers.forEach((r) => {
             const rid = r.reader_id || r.id || '';
             const serial = r.serial || ((r.device && r.device.identifier) ? r.device.identifier : '-');
             const modelo = r.model || '-';
@@ -313,7 +333,7 @@ async function loadReaders() {
             opt.dataset.meta = JSON.stringify(r);
             sel.appendChild(opt);
         });
-        setResult('Leitoras carregadas (' + data.readers.length + ')', data);
+        setResult('Leitoras carregadas (' + readers.length + ') [fonte: ' + (data.source || '?') + ']', data);
         await loadReadersTable();
     } catch (e) {
         sel.innerHTML = '<option value="">Erro ao carregar leitoras</option>';
@@ -331,14 +351,15 @@ async function loadReadersTable() {
     try {
         const resp = await fetch(TEST_API + '?action=readers_db');
         const data = await resp.json();
+        const readers = normalizeReaders(data);
 
-        if (!data.success || !Array.isArray(data.readers) || data.readers.length === 0) {
+        if (!data.success || readers.length === 0) {
             box.innerHTML = '<p style="color:#6c757d; font-size:13px; text-align:center; padding:12px;">Nenhuma leitora vinculada.</p>';
             return;
         }
 
         let html = '<div style="font-size:12px;">';
-        data.readers.forEach((r, i) => {
+        readers.forEach((r, i) => {
             const rid = r.reader_id || r.id || '';
             const name = r.name || r.serial || rid.substring(0, 16) + '...';
             const status = r.status_live || r.status || 'UNKNOWN';
@@ -356,7 +377,7 @@ async function loadReadersTable() {
             html += '</div>';
         });
         html += '<div style="color:#6c757d; font-size:11px; text-align:right; margin-top:4px;">';
-        html += data.readers.length + ' leitora(s) vinculada(s)';
+        html += readers.length + ' leitora(s) vinculada(s) [fonte: ' + (data.source || '?') + ']';
         html += '</div>';
         html += '</div>';
         box.innerHTML = html;

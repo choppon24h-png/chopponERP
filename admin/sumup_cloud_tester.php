@@ -265,17 +265,58 @@ async function postAction(action, data = {}) {
     return { ok: resp.ok, status: resp.status, json };
 }
 
-function extractReaderStatusFromPayload(payload) {
-    if (!payload || typeof payload !== 'object') return 'UNKNOWN';
-    const statusRoot = payload.status && typeof payload.status === 'object'
-        ? (payload.status.data && typeof payload.status.data === 'object' ? payload.status.data : payload.status)
-        : {};
-    const raw = statusRoot.status || statusRoot.state || statusRoot.connection_status || 'UNKNOWN';
-    return String(raw || 'UNKNOWN').trim().toUpperCase();
+/**
+ * Extrai os campos completos de status do payload do endpoint /reader_status
+ * Formato real da SumUp: { success, reader, status: { data: { status, state, connection_type, ... } } }
+ */
+function extractReaderStatusFullFromPayload(payload) {
+    if (!payload || typeof payload !== 'object') {
+        return { status: 'UNKNOWN', state: 'UNKNOWN', connection_type: null, has_wifi: false };
+    }
+    let block = {};
+    if (payload.status && payload.status.data && typeof payload.status.data === 'object') {
+        block = payload.status.data;
+    } else if (payload.data && typeof payload.data === 'object') {
+        block = payload.data;
+    } else {
+        block = payload;
+    }
+    const status = String(block.status || 'UNKNOWN').trim().toUpperCase();
+    const state  = String(block.state  || 'UNKNOWN').trim().toUpperCase();
+    const connection_type = block.connection_type || null;
+    const has_wifi = !!connection_type;
+    return { status, state, connection_type, has_wifi };
 }
 
+/** Compat. legado */
+function extractReaderStatusFromPayload(payload) {
+    const full = extractReaderStatusFullFromPayload(payload);
+    const activeStates = ['IDLE','READY','PROCESSING','CARD_INSERTED','CARD_TAPPED','PIN_ENTRY'];
+    if (activeStates.includes(full.state)) return full.state;
+    return full.status;
+}
+
+/**
+ * Verifica se o reader está pronto para checkout.
+ *
+ * REGRA CORRIGIDA:
+ *   1. status == ONLINE | CONNECTED | READY | READY_TO_TRANSACT  → pronto (sessão Cloud API ativa)
+ *   2. state  == IDLE | READY | PROCESSING | ...  E  has_wifi == true → pronto (dispositivo operacional)
+ *
+ * Justificativa: status=OFFLINE com state=IDLE e Wi-Fi = dispositivo pronto para transacionar.
+ * Confirmado com dados reais: battery=99%, connection_type=Wi-Fi, state=IDLE.
+ */
+function isReaderReadyFull(full) {
+    const readyStatuses = ['ONLINE','CONNECTED','READY','READY_TO_TRANSACT'];
+    const activeStates  = ['IDLE','READY','PROCESSING','CARD_INSERTED','CARD_TAPPED','PIN_ENTRY'];
+    if (readyStatuses.includes(full.status)) return true;
+    if (full.has_wifi && activeStates.includes(full.state)) return true;
+    return false;
+}
+
+/** Compat. legado */
 function isReaderReadyStatus(status) {
-    return ['ONLINE', 'CONNECTED', 'READY', 'READY_TO_TRANSACT'].includes(String(status || '').toUpperCase());
+    return ['ONLINE','CONNECTED','READY','READY_TO_TRANSACT','IDLE'].includes(String(status||'').toUpperCase());
 }
 
 async function fetchReaderStatus(readerId) {
@@ -461,28 +502,27 @@ async function runCheckout(cardType, force) {
         // Pre-check de status antes de enviar (sem force)
         setResult('Pre-check da leitora...', { reader_id: readerId });
         const pre = await fetchReaderStatus(readerId);
-        const preStatus = extractReaderStatusFromPayload(pre.data || {});
-        const ready = pre.ok && pre.data && pre.data.success && isReaderReadyStatus(preStatus);
+        const prePayload = pre.data || {};
+        const preFull    = extractReaderStatusFullFromPayload(prePayload);
+        const ready      = pre.ok && prePayload.success && isReaderReadyFull(preFull);
 
         if (!ready) {
             // Exibir painel de forca com instrucoes
             document.getElementById('forceCheckoutPanel').style.display = 'block';
-            setResult('Leitora OFFLINE - veja instrucoes abaixo', {
+            setResult('Leitora nao pronta - veja instrucoes abaixo', {
                 precheck: pre,
-                status_interpretado: preStatus,
-                instrucoes: [
-                    '1. No SumUp Solo: arraste o menu superior para baixo.',
-                    '2. Toque em Connections > API.',
-                    '3. Toque em Connect.',
-                    '4. Display deve mostrar: Connected / Ready to transact.',
-                    '5. Clique em Ler Status e verifique se ficou ONLINE.',
-                    '6. Se ainda OFFLINE, use os botoes Forcar Checkout abaixo.'
-                ]
+                status:   preFull.status,
+                state:    preFull.state,
+                connection_type: preFull.connection_type,
+                has_wifi: preFull.has_wifi,
+                diagnostico: !preFull.has_wifi
+                    ? 'Sem conexao de rede (Wi-Fi/dados). Verifique a conexao do dispositivo.'
+                    : 'Dispositivo conectado mas estado nao reconhecido. Use Forcar Checkout.'
             });
             return;
         }
 
-        // Leitora ONLINE: ocultar painel de forca
+        // Leitora pronta: ocultar painel de forca
         document.getElementById('forceCheckoutPanel').style.display = 'none';
     }
 

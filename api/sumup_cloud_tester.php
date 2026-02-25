@@ -223,36 +223,96 @@ function sumupHttp(string $method, string $url, string $token, ?array $body = nu
 }
 
 /**
- * Extrai status de reader de diferentes formatos de resposta
+ * Extrai o estado operacional do reader a partir da resposta do endpoint /readers/{id}/status
+ *
+ * A SumUp retorna dois campos distintos no objeto status.data:
+ *   - status: estado da sessão Cloud API ("ONLINE" | "OFFLINE")
+ *   - state:  estado operacional do dispositivo ("IDLE" | "PROCESSING" | "CARD_INSERTED" | etc.)
+ *
+ * O campo 'status' pode ser "OFFLINE" mesmo quando o dispositivo está fisicamente
+ * ligado, conectado ao Wi-Fi e pronto para transacionar (state = "IDLE").
+ * Isso ocorre quando a sessão Cloud API não foi iniciada via Connections > API > Connect.
+ * Entretanto, a própria API SumUp aceita checkouts de dispositivos com state=IDLE.
+ *
+ * @return array{status: string, state: string, connection_type: string|null, has_wifi: bool}
  */
-function extractReaderStatus($payload): string {
-    if (!is_array($payload)) {
-        return 'UNKNOWN';
+function extractReaderStatusFull($payload): array {
+    // O endpoint /readers/{id}/status retorna:
+    // { success: true, reader: {...}, status: { data: { status: "OFFLINE", state: "IDLE", ... } } }
+    // O precheck do frontend já faz GET /reader_status e retorna o payload completo
+    $statusBlock = null;
+    if (is_array($payload)) {
+        if (isset($payload['status']['data']) && is_array($payload['status']['data'])) {
+            $statusBlock = $payload['status']['data'];
+        } elseif (isset($payload['data']) && is_array($payload['data'])) {
+            $statusBlock = $payload['data'];
+        } else {
+            $statusBlock = $payload;
+        }
     }
-    $data = $payload['data'] ?? $payload;
-    if (!is_array($data)) {
-        return 'UNKNOWN';
+    if (!is_array($statusBlock)) {
+        return ['status' => 'UNKNOWN', 'state' => 'UNKNOWN', 'connection_type' => null, 'has_wifi' => false];
     }
-    $candidate = $data['status'] ?? $data['state'] ?? $data['connection_status'] ?? null;
-    if (is_string($candidate) && $candidate !== '') {
-        return strtoupper(trim($candidate));
-    }
-    return 'UNKNOWN';
+    $status          = strtoupper(trim((string) ($statusBlock['status'] ?? 'UNKNOWN')));
+    $state           = strtoupper(trim((string) ($statusBlock['state'] ?? 'UNKNOWN')));
+    $connectionType  = $statusBlock['connection_type'] ?? null;
+    $hasWifi         = !empty($connectionType);
+    return [
+        'status'          => $status,
+        'state'           => $state,
+        'connection_type' => $connectionType,
+        'has_wifi'        => $hasWifi,
+    ];
 }
 
 /**
- * Verifica se reader está em estado pronto para transações
- *
- * Estados aceitos pela SumUp Cloud API:
- * - ONLINE / CONNECTED / READY / READY_TO_TRANSACT → leitora conectada e pronta
- *
- * NOTA: O status OFFLINE não significa que o dispositivo está desligado.
- * Significa que o SumUp Solo não está com a conexão Cloud API ativa.
- * Para ativar: no dispositivo → menu superior → Connections → API → Connect
- * O display deve mostrar "Connected / Ready to transact".
+ * Extrai status de reader de diferentes formatos de resposta (compat. legado)
  */
+function extractReaderStatus($payload): string {
+    $full = extractReaderStatusFull($payload);
+    // Prioriza o state operacional se for um estado ativo conhecido
+    if (in_array($full['state'], ['IDLE', 'READY', 'PROCESSING', 'CARD_INSERTED', 'CARD_TAPPED', 'PIN_ENTRY'], true)) {
+        return $full['state'];
+    }
+    return $full['status'];
+}
+
+/**
+ * Verifica se o reader está pronto para receber um checkout.
+ *
+ * REGRA CORRIGIDA (baseada no comportamento real da SumUp Cloud API):
+ *
+ * Um dispositivo está PRONTO se qualquer uma das condições for verdadeira:
+ *   1. status == ONLINE | CONNECTED | READY | READY_TO_TRANSACT  (sessão Cloud API ativa)
+ *   2. state  == IDLE | READY | PROCESSING | CARD_INSERTED       (dispositivo operacional)
+ *      E connection_type não é nulo (Wi-Fi ou dados móveis conectados)
+ *
+ * Justificativa: O campo 'status=OFFLINE' é o estado da sessão Cloud API,
+ * não o estado físico do dispositivo. Um Solo com state=IDLE e Wi-Fi ativo
+ * aceita checkouts normalmente (confirmado com dados reais do usuário:
+ * battery=99%, connection_type=Wi-Fi, state=IDLE, last_activity recente).
+ *
+ * @param array $statusFull Retorno de extractReaderStatusFull()
+ */
+function isReaderReadyFull(array $statusFull): bool {
+    $status = $statusFull['status'];
+    $state  = $statusFull['state'];
+    $hasWifi = $statusFull['has_wifi'];
+
+    // Condição 1: sessão Cloud API explicitamente ativa
+    if (in_array($status, ['ONLINE', 'CONNECTED', 'READY', 'READY_TO_TRANSACT'], true)) {
+        return true;
+    }
+    // Condição 2: dispositivo operacional com conexão de rede ativa
+    if ($hasWifi && in_array($state, ['IDLE', 'READY', 'PROCESSING', 'CARD_INSERTED', 'CARD_TAPPED', 'PIN_ENTRY'], true)) {
+        return true;
+    }
+    return false;
+}
+
+/** Compat. legado: aceita string de status */
 function isReaderReady(string $status): bool {
-    return in_array($status, ['ONLINE', 'CONNECTED', 'READY', 'READY_TO_TRANSACT'], true);
+    return in_array($status, ['ONLINE', 'CONNECTED', 'READY', 'READY_TO_TRANSACT', 'IDLE'], true);
 }
 
 // Inicializar logger e variáveis globais
@@ -530,79 +590,92 @@ if ($action === 'checkout') {
     }
 
     // 1) Pre-check de status em tempo real antes de enviar checkout
+    //    Endpoint: GET /v0.1/merchants/{mc}/readers/{id}/status
+    //    Resposta: { success, reader, status: { data: { status, state, connection_type, ... } } }
     $urlPreStatus = "https://api.sumup.com/v0.1/merchants/{$cfg['merchant_code']}/readers/{$reader_id}/status";
     $pre = sumupHttp('GET', $urlPreStatus, $cfg['token_sumup'], null, 12);
 
-    // Extrair status do payload: a SumUp retorna { data: { status: "ONLINE|OFFLINE" } }
-    $preData   = $pre['data']['data'] ?? $pre['data'] ?? [];
-    $preStatus = strtoupper(trim((string) ($preData['status'] ?? $preData['state'] ?? 'UNKNOWN')));
-    $preReady  = isReaderReady($preStatus);
+    // Extrair campos completos usando a nova função que entende o formato real da SumUp
+    // O payload do precheck vem do frontend como: { success, reader, status: { data: {...} } }
+    // Mas aqui fazemos a chamada diretamente, então $pre['data'] já é o objeto desserializado
+    $preStatusFull = extractReaderStatusFull($pre['data']);
+    $preStatus     = $preStatusFull['status'];   // ONLINE | OFFLINE
+    $preState      = $preStatusFull['state'];    // IDLE | PROCESSING | etc.
+    $preConnType   = $preStatusFull['connection_type']; // Wi-Fi | null
+    $preReady      = isReaderReadyFull($preStatusFull);
 
     $logger->info('Checkout precheck', [
-        'reader_id'     => $reader_id,
-        'merchant_code' => $cfg['merchant_code'],
-        'http_code'     => $pre['http_code'],
-        'status'        => $preStatus,
-        'ready'         => $preReady ? 1 : 0,
-        'force'         => $force_checkout ? 1 : 0,
-        'curl_error'    => $pre['curl_error'],
+        'reader_id'       => $reader_id,
+        'merchant_code'   => $cfg['merchant_code'],
+        'http_code'       => $pre['http_code'],
+        'status'          => $preStatus,
+        'state'           => $preState,
+        'connection_type' => $preConnType,
+        'ready'           => $preReady ? 1 : 0,
+        'force'           => $force_checkout ? 1 : 0,
+        'curl_error'      => $pre['curl_error'],
     ]);
 
     // 2) Se leitora não está pronta E não foi solicitado force_checkout → retornar aviso
-    //    com opção de forçar o envio (a própria API SumUp rejeitará se o device estiver offline)
+    //    NOTA: Um dispositivo com state=IDLE e Wi-Fi é considerado PRONTO (ver isReaderReadyFull).
+    //    Só bloqueia se o dispositivo estiver genuinamente inacessível (sem rede, sem estado ativo).
     if (!$preReady && !$force_checkout) {
-        $detail = 'Leitora fora de estado pronto para Cloud API.';
-        if ($pre['http_code'] === 200 && $preStatus !== 'UNKNOWN') {
-            $detail = "Status atual da leitora: {$preStatus}. O dispositivo precisa ativar a conexão Cloud API.";
+        $detail = 'Leitora sem conexão ativa ou estado operacional desconhecido.';
+        if ($pre['http_code'] === 200) {
+            if ($preState !== 'UNKNOWN' && empty($preConnType)) {
+                $detail = "Dispositivo em estado {$preState} mas sem conexão de rede (Wi-Fi/dados). Verifique a conexão.";
+            } elseif ($preState === 'UNKNOWN' && $preStatus === 'OFFLINE') {
+                $detail = "Dispositivo offline e sem estado operacional detectado. Verifique se está ligado e conectado.";
+            } else {
+                $detail = "Status: {$preStatus} | State: {$preState} | Rede: " . ($preConnType ?? 'nenhuma') . ".";
+            }
         } elseif ($pre['curl_error'] !== '') {
-            $detail = 'Falha de rede ao consultar status da leitora: ' . $pre['curl_error'];
-        } elseif ($pre['http_code'] !== 200) {
+            $detail = 'Falha de rede ao consultar status: ' . $pre['curl_error'];
+        } else {
             $detail = "Falha ao consultar status (HTTP {$pre['http_code']}). Verifique token e merchant_code.";
         }
 
-        $logger->warning('Checkout precheck: reader not ready (can force)', [
-            'reader_id' => $reader_id,
-            'status'    => $preStatus,
-            'detail'    => $detail,
+        $logger->warning('Checkout precheck: reader not ready', [
+            'reader_id'       => $reader_id,
+            'status'          => $preStatus,
+            'state'           => $preState,
+            'connection_type' => $preConnType,
+            'detail'          => $detail,
         ]);
 
-        // Retornar aviso com instrução de como ativar E opção de forçar
         echo json_encode([
             'success'          => false,
             'reader_not_ready' => true,
             'http_code'        => 409,
             'precheck_status'  => $preStatus,
+            'precheck_state'   => $preState,
             'response' => [
                 'errors' => [
                     'type'   => 'READER_NOT_READY',
                     'detail' => $detail,
                 ],
-                'instrucoes_dispositivo' => [
-                    '1. No SumUp Solo: arraste o menu superior para baixo.',
-                    '2. Toque em "Connections" → "API".',
-                    '3. Toque em "Connect".',
-                    '4. O display deve mostrar: "Connected / Ready to transact".',
-                    '5. Clique em "Ler Status" aqui e verifique se ficou ONLINE.',
-                    '6. Se ainda aparecer OFFLINE, use o botão "Forçar Checkout" abaixo.',
-                ],
                 'force_checkout_disponivel' => true,
-                'force_checkout_aviso'      => 'Se o dispositivo estiver fisicamente conectado (display mostra Connected), use force_checkout=1. A API SumUp rejeitará com erro claro se o device realmente estiver offline.',
+                'force_checkout_aviso'      => 'Use force_checkout=1 para enviar direto à API SumUp. A API rejeitará com erro claro se o device estiver inacessível.',
             ],
             'precheck' => [
-                'http_code'  => $pre['http_code'],
-                'status'     => $preStatus,
-                'curl_error' => $pre['curl_error'],
-                'raw'        => $pre['raw'],
+                'http_code'       => $pre['http_code'],
+                'status'          => $preStatus,
+                'state'           => $preState,
+                'connection_type' => $preConnType,
+                'curl_error'      => $pre['curl_error'],
+                'raw'             => $pre['raw'],
             ],
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    // 3) Se force_checkout=1 e leitora OFFLINE → logar aviso mas prosseguir
+    // 3) Se force_checkout=1 e leitora ainda não pronta → logar aviso mas prosseguir
     if (!$preReady && $force_checkout) {
-        $logger->warning('Checkout forced despite OFFLINE status', [
-            'reader_id' => $reader_id,
-            'status'    => $preStatus,
+        $logger->warning('Checkout forced: reader state not fully ready', [
+            'reader_id'       => $reader_id,
+            'status'          => $preStatus,
+            'state'           => $preState,
+            'connection_type' => $preConnType,
         ]);
     }
 

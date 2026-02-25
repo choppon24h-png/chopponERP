@@ -51,27 +51,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_payment'])) {
     $credit             = isset($_POST['credit']) ? 1 : 0;
     $debit              = isset($_POST['debit'])  ? 1 : 0;
 
-    // Garantir que a coluna affiliate_app_id existe (migração automática)
+    // ── Migração automática: adicionar coluna affiliate_app_id se não existir ──
+    // NOTA: MySQL 5.7 (HostGator) não suporta "ADD COLUMN IF NOT EXISTS".
+    // Usamos try/catch capturando o erro 1060 (Duplicate column name).
     try {
-        $conn->exec("ALTER TABLE `payment` ADD COLUMN IF NOT EXISTS `affiliate_app_id` VARCHAR(120) NULL DEFAULT NULL COMMENT 'App Identifier da Affiliate Key SumUp'");
-    } catch (Exception $e) { /* ignora se já existir */ }
+        $conn->exec("ALTER TABLE `payment` ADD COLUMN `affiliate_app_id` VARCHAR(120) NULL DEFAULT NULL COMMENT 'App Identifier da Affiliate Key SumUp'");
+    } catch (PDOException $e) {
+        // Erro 1060 = coluna já existe — ignorar. Qualquer outro erro também ignora (não bloqueia o save).
+    }
+
+    // ── Verificar se merchant_code também existe (coluna adicionada em versões anteriores) ──
+    try {
+        $conn->exec("ALTER TABLE `payment` ADD COLUMN `merchant_code` VARCHAR(50) NULL DEFAULT NULL COMMENT 'Merchant Code SumUp'");
+    } catch (PDOException $e) { /* já existe */ }
 
     $stmt     = $conn->query("SELECT id FROM payment LIMIT 1");
     $existing = $stmt->fetch();
 
-    if ($existing) {
-        $stmt = $conn->prepare("UPDATE payment SET token_sumup = ?, affiliate_key = ?, affiliate_app_id = ?, estabelecimento_id = ?, pix = ?, credit = ?, debit = ? WHERE id = ?");
-        if ($stmt->execute([$token_sumup, $affiliate_key ?: null, $affiliate_app_id ?: null, $estabelecimento_id, $pix, $credit, $debit, $existing['id']])) {
-            $success = 'Configurações atualizadas com sucesso!';
+    try {
+        if ($existing) {
+            $stmt = $conn->prepare("UPDATE payment SET token_sumup = ?, affiliate_key = ?, affiliate_app_id = ?, estabelecimento_id = ?, pix = ?, credit = ?, debit = ? WHERE id = ?");
+            if ($stmt->execute([$token_sumup, $affiliate_key ?: null, $affiliate_app_id ?: null, $estabelecimento_id, $pix, $credit, $debit, $existing['id']])) {
+                $success = 'Configurações atualizadas com sucesso!';
+            } else {
+                $error = 'Erro ao atualizar configurações.';
+            }
         } else {
-            $error = 'Erro ao atualizar configurações.';
+            $stmt = $conn->prepare("INSERT INTO payment (token_sumup, affiliate_key, affiliate_app_id, estabelecimento_id, pix, credit, debit) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            if ($stmt->execute([$token_sumup, $affiliate_key ?: null, $affiliate_app_id ?: null, $estabelecimento_id, $pix, $credit, $debit])) {
+                $success = 'Configurações salvas com sucesso!';
+            } else {
+                $error = 'Erro ao salvar configurações.';
+            }
         }
-    } else {
-        $stmt = $conn->prepare("INSERT INTO payment (token_sumup, affiliate_key, affiliate_app_id, estabelecimento_id, pix, credit, debit) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        if ($stmt->execute([$token_sumup, $affiliate_key ?: null, $affiliate_app_id ?: null, $estabelecimento_id, $pix, $credit, $debit])) {
-            $success = 'Configurações salvas com sucesso!';
-        } else {
-            $error = 'Erro ao salvar configurações.';
+    } catch (PDOException $e) {
+        // Se ainda falhar (ex: coluna não existe por algum motivo), tenta sem affiliate_app_id
+        try {
+            if ($existing) {
+                $stmt = $conn->prepare("UPDATE payment SET token_sumup = ?, affiliate_key = ?, estabelecimento_id = ?, pix = ?, credit = ?, debit = ? WHERE id = ?");
+                $stmt->execute([$token_sumup, $affiliate_key ?: null, $estabelecimento_id, $pix, $credit, $debit, $existing['id']]);
+            } else {
+                $stmt = $conn->prepare("INSERT INTO payment (token_sumup, affiliate_key, estabelecimento_id, pix, credit, debit) VALUES (?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$token_sumup, $affiliate_key ?: null, $estabelecimento_id, $pix, $credit, $debit]);
+            }
+            $success = 'Configurações salvas (sem affiliate_app_id — execute o SQL de migração no phpMyAdmin).';
+        } catch (PDOException $e2) {
+            $error = 'Erro ao salvar: ' . $e2->getMessage();
         }
     }
 }

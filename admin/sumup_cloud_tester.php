@@ -72,6 +72,42 @@ requireAuth();
                         <i class="fas fa-heartbeat"></i> Health Check
                     </button>
                 </div>
+
+                <!-- Painel de Forca: aparece quando status e OFFLINE mas dispositivo pode estar conectado -->
+                <div id="forceCheckoutPanel" style="display:none; margin-top:14px; background:#fff3cd; border:1px solid #ffc107; border-radius:8px; padding:14px;">
+                    <h6 style="color:#856404; margin-bottom:8px;"><i class="fas fa-exclamation-triangle"></i> Leitora OFFLINE na API &mdash; Opcoes</h6>
+                    <p style="font-size:13px; color:#6c757d; margin-bottom:10px;">
+                        O status retornou <strong>OFFLINE</strong>. Se o display do SumUp Solo mostra
+                        <strong>"Connected / Ready to transact"</strong>, o status da API pode estar
+                        desatualizado. Tente as opcoes abaixo:
+                    </p>
+                    <div style="background:#f8f9fa; border-radius:6px; padding:10px; margin-bottom:12px; font-size:13px;">
+                        <strong>Passos para ativar no dispositivo:</strong>
+                        <ol style="margin:6px 0 0 16px; padding:0;">
+                            <li>No SumUp Solo, arraste o menu superior para baixo.</li>
+                            <li>Toque em <strong>Connections</strong> &rarr; <strong>API</strong>.</li>
+                            <li>Toque em <strong>Connect</strong>.</li>
+                            <li>O display deve mostrar: <em>"Connected / Ready to transact"</em>.</li>
+                            <li>Clique em <strong>Ler Status</strong> acima e verifique se ficou ONLINE.</li>
+                        </ol>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="btn btn-warning" onclick="checkReaderStatus()">
+                            <i class="fas fa-sync-alt"></i> Atualizar Status Agora
+                        </button>
+                        <button class="btn btn-danger" id="btnForceDebit" onclick="runCheckout('debit', true)">
+                            <i class="fas fa-bolt"></i> Forcar Checkout Debito
+                        </button>
+                        <button class="btn btn-danger" id="btnForceCredit" onclick="runCheckout('credit', true)">
+                            <i class="fas fa-bolt"></i> Forcar Checkout Credito
+                        </button>
+                    </div>
+                    <small style="color:#856404; margin-top:8px; display:block;">
+                        <i class="fas fa-info-circle"></i>
+                        O "Forcar Checkout" envia diretamente para a API SumUp sem pre-verificar o status.
+                        A propria API retornara erro se o dispositivo realmente estiver offline.
+                    </small>
+                </div>
             </div>
         </div>
 
@@ -412,41 +448,67 @@ document.getElementById('readerSelect').addEventListener('change', function () {
 // Checkout
 // ============================================================
 
-async function runCheckout(cardType) {
+async function runCheckout(cardType, force) {
     const readerId = getReaderId();
     if (!readerId) {
         setResult('Validacao', { error: 'Selecione um reader_id' });
         return;
     }
 
-    setResult('Pre-check da leitora...', { reader_id: readerId });
-    const pre = await fetchReaderStatus(readerId);
-    const preStatus = extractReaderStatusFromPayload(pre.data || {});
-    const ready = pre.ok && pre.data && pre.data.success && isReaderReadyStatus(preStatus);
+    const forceMode = force === true;
 
-    if (!ready) {
-        setResult('Checkout bloqueado - leitora nao pronta', {
-            precheck: pre,
-            status_interpretado: preStatus,
-            next_steps: [
-                'No SumUp Solo acesse Connections -> API -> Connect.',
-                'Confirme no display: Connected / Ready to transact.',
-                'Clique em "Ler Status" e tente novamente.'
-            ]
-        });
-        return;
+    if (!forceMode) {
+        // Pre-check de status antes de enviar (sem force)
+        setResult('Pre-check da leitora...', { reader_id: readerId });
+        const pre = await fetchReaderStatus(readerId);
+        const preStatus = extractReaderStatusFromPayload(pre.data || {});
+        const ready = pre.ok && pre.data && pre.data.success && isReaderReadyStatus(preStatus);
+
+        if (!ready) {
+            // Exibir painel de forca com instrucoes
+            document.getElementById('forceCheckoutPanel').style.display = 'block';
+            setResult('Leitora OFFLINE - veja instrucoes abaixo', {
+                precheck: pre,
+                status_interpretado: preStatus,
+                instrucoes: [
+                    '1. No SumUp Solo: arraste o menu superior para baixo.',
+                    '2. Toque em Connections > API.',
+                    '3. Toque em Connect.',
+                    '4. Display deve mostrar: Connected / Ready to transact.',
+                    '5. Clique em Ler Status e verifique se ficou ONLINE.',
+                    '6. Se ainda OFFLINE, use os botoes Forcar Checkout abaixo.'
+                ]
+            });
+            return;
+        }
+
+        // Leitora ONLINE: ocultar painel de forca
+        document.getElementById('forceCheckoutPanel').style.display = 'none';
     }
 
     const amount = getAmount();
     const description = getDescription();
-    setResult('Enviando checkout ' + cardType + '...', { reader_id: readerId, amount, description });
-    const out = await postAction('checkout', {
+    const modeLabel = forceMode ? ' [FORCADO]' : '';
+    setResult('Enviando checkout ' + cardType + modeLabel + '...', { reader_id: readerId, amount, description, force: forceMode });
+
+    const params = {
         reader_id: readerId,
         card_type: cardType,
         amount: amount.toFixed(2),
         description
-    });
-    setResult('Checkout ' + cardType + ' concluido', out);
+    };
+    if (forceMode) params.force_checkout = '1';
+
+    const out = await postAction('checkout', params);
+
+    // Se a resposta indica reader_not_ready, mostrar painel de forca
+    if (out.json && out.json.reader_not_ready) {
+        document.getElementById('forceCheckoutPanel').style.display = 'block';
+    } else {
+        document.getElementById('forceCheckoutPanel').style.display = 'none';
+    }
+
+    setResult('Checkout ' + cardType + modeLabel + ' concluido', out);
 }
 
 // ============================================================

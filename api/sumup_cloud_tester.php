@@ -695,24 +695,63 @@ if ($action === 'checkout') {
         'return_url' => SITE_URL . '/api/webhook.php',
     ];
 
-    if (!empty($cfg['affiliate_key'])) {
-        $body['affiliate'] = [
-            'key' => $cfg['affiliate_key'],
-            'foreign_transaction_id' => 'TEST-' . strtoupper($card_type) . '-' . time(),
-        ];
-        if (!empty($cfg['affiliate_app_id'])) {
-            $body['affiliate']['app_id'] = $cfg['affiliate_app_id'];
-        }
+    // ── Montar bloco affiliate ────────────────────────────────────────────────────
+    // A SumUp Cloud API exige OBRIGATORIAMENTE affiliate.key + affiliate.app_id.
+    // Sem app_id a API retorna HTTP 422: {"errors":{"affiliate":{"app_id":["can't be blank"]}}}
+    // Referência: https://developer.sumup.com/tools/authorization/affiliate-keys/
+    if (empty($cfg['affiliate_key'])) {
+        $logger->error('Checkout bloqueado: affiliate_key nao configurada', [
+            'reader_id' => $reader_id,
+            'action'    => 'Acesse: Pagamentos > Integração SumUp > Affiliate Key',
+        ]);
+        echo json_encode([
+            'success'   => false,
+            'http_code' => 422,
+            'error'     => 'affiliate_key nao configurada',
+            'solucao'   => 'Acesse Pagamentos → Integração SumUp → preencha o campo "Affiliate Key" (sup_afk_...) e salve.',
+            'doc'       => 'https://developer.sumup.com/tools/authorization/affiliate-keys/',
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
     }
+
+    if (empty($cfg['affiliate_app_id'])) {
+        $logger->error('Checkout bloqueado: affiliate_app_id nao configurado', [
+            'reader_id' => $reader_id,
+            'action'    => 'Acesse: Pagamentos > Integração SumUp > Affiliate App ID',
+        ]);
+        echo json_encode([
+            'success'   => false,
+            'http_code' => 422,
+            'error'     => 'affiliate_app_id nao configurado',
+            'solucao'   => 'Acesse Pagamentos → Integração SumUp → preencha o campo "Affiliate App ID" (ex: com.ochoppo.erp) e salve. Este campo é obrigatório pela API SumUp para Cloud API.',
+            'doc'       => 'https://developer.sumup.com/tools/authorization/affiliate-keys/',
+            'passos'    => [
+                '1. Acesse me.sumup.com → Settings → For Developers → Toolkit → Affiliate Keys',
+                '2. Copie o valor do campo "Application identifier" (ex: com.ochoppo.erp)',
+                '3. Cole no campo "Affiliate App ID" em Pagamentos → Integração SumUp',
+                '4. Clique em Salvar Configurações',
+                '5. Tente o checkout novamente',
+            ],
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $body['affiliate'] = [
+        'key'                    => $cfg['affiliate_key'],
+        'app_id'                 => $cfg['affiliate_app_id'],
+        'foreign_transaction_id' => 'TEST-' . strtoupper($card_type) . '-' . time(),
+    ];
 
     $url = "https://api.sumup.com/v0.1/merchants/{$cfg['merchant_code']}/readers/{$reader_id}/checkout";
     $logger->info('Checkout request', [
-        'reader_id' => $reader_id,
-        'card_type' => $card_type,
-        'value' => $value,
-        'merchant_code' => $cfg['merchant_code'],
-        'has_affiliate' => isset($body['affiliate']),
-        'has_app_id' => !empty($body['affiliate']['app_id'] ?? ''),
+        'reader_id'    => $reader_id,
+        'card_type'    => $card_type,
+        'value'        => $value,
+        'merchant_code'=> $cfg['merchant_code'],
+        'has_affiliate'=> isset($body['affiliate']),
+        'has_app_id'   => !empty($body['affiliate']['app_id'] ?? ''),
+        'app_id'       => $cfg['affiliate_app_id'] ?? '(vazio)',
+        'affiliate_key_masked' => !empty($cfg['affiliate_key']) ? substr($cfg['affiliate_key'], 0, 12) . '...' : '(vazio)',
     ]);
 
     $res = sumupHttp('POST', $url, $cfg['token_sumup'], $body, 30);

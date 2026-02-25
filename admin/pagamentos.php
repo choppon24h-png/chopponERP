@@ -43,26 +43,32 @@ $estabelecimentos = $stmt_estabs->fetchAll(PDO::FETCH_ASSOC);
 
 // ─── Processar salvar configuração de pagamento ───────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_payment'])) {
-    $token_sumup       = sanitize($_POST['token_sumup']);
-    $affiliate_key     = sanitize($_POST['affiliate_key'] ?? '');
+    $token_sumup        = sanitize($_POST['token_sumup']);
+    $affiliate_key      = sanitize($_POST['affiliate_key'] ?? '');
+    $affiliate_app_id   = sanitize($_POST['affiliate_app_id'] ?? '');  // ← NOVO
     $estabelecimento_id = !empty($_POST['estabelecimento_id']) ? intval($_POST['estabelecimento_id']) : null;
-    $pix               = isset($_POST['pix'])    ? 1 : 0;
-    $credit            = isset($_POST['credit']) ? 1 : 0;
-    $debit             = isset($_POST['debit'])  ? 1 : 0;
+    $pix                = isset($_POST['pix'])    ? 1 : 0;
+    $credit             = isset($_POST['credit']) ? 1 : 0;
+    $debit              = isset($_POST['debit'])  ? 1 : 0;
+
+    // Garantir que a coluna affiliate_app_id existe (migração automática)
+    try {
+        $conn->exec("ALTER TABLE `payment` ADD COLUMN IF NOT EXISTS `affiliate_app_id` VARCHAR(120) NULL DEFAULT NULL COMMENT 'App Identifier da Affiliate Key SumUp'");
+    } catch (Exception $e) { /* ignora se já existir */ }
 
     $stmt     = $conn->query("SELECT id FROM payment LIMIT 1");
     $existing = $stmt->fetch();
 
     if ($existing) {
-        $stmt = $conn->prepare("UPDATE payment SET token_sumup = ?, affiliate_key = ?, estabelecimento_id = ?, pix = ?, credit = ?, debit = ? WHERE id = ?");
-        if ($stmt->execute([$token_sumup, $affiliate_key ?: null, $estabelecimento_id, $pix, $credit, $debit, $existing['id']])) {
+        $stmt = $conn->prepare("UPDATE payment SET token_sumup = ?, affiliate_key = ?, affiliate_app_id = ?, estabelecimento_id = ?, pix = ?, credit = ?, debit = ? WHERE id = ?");
+        if ($stmt->execute([$token_sumup, $affiliate_key ?: null, $affiliate_app_id ?: null, $estabelecimento_id, $pix, $credit, $debit, $existing['id']])) {
             $success = 'Configurações atualizadas com sucesso!';
         } else {
             $error = 'Erro ao atualizar configurações.';
         }
     } else {
-        $stmt = $conn->prepare("INSERT INTO payment (token_sumup, affiliate_key, estabelecimento_id, pix, credit, debit) VALUES (?, ?, ?, ?, ?, ?)");
-        if ($stmt->execute([$token_sumup, $affiliate_key ?: null, $estabelecimento_id, $pix, $credit, $debit])) {
+        $stmt = $conn->prepare("INSERT INTO payment (token_sumup, affiliate_key, affiliate_app_id, estabelecimento_id, pix, credit, debit) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        if ($stmt->execute([$token_sumup, $affiliate_key ?: null, $affiliate_app_id ?: null, $estabelecimento_id, $pix, $credit, $debit])) {
             $success = 'Configurações salvas com sucesso!';
         } else {
             $error = 'Erro ao salvar configurações.';
@@ -174,7 +180,25 @@ require_once '../includes/header.php';
                                placeholder="Ex: sup_afk_...">
                         <small style="color:var(--gray-600);">
                             Chave de afiliado obrigatória para transações via Cloud API (leitoras SumUp Solo).
-                            Crie em: <a href="https://developer.sumup.com" target="_blank">developer.sumup.com</a> → Affiliate Keys.
+                            Crie em: <a href="https://developer.sumup.com" target="_blank">developer.sumup.com</a> → Settings → For Developers → Toolkit → Affiliate Keys.
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="affiliate_app_id">
+                            <i class="fas fa-fingerprint"></i> Affiliate App ID
+                            <span style="font-size:11px;color:#e74c3c;font-weight:bold;">(obrigatório — sem isso o checkout retorna erro 422)</span>
+                        </label>
+                        <input type="text"
+                               name="affiliate_app_id"
+                               id="affiliate_app_id"
+                               class="form-control"
+                               value="<?php echo htmlspecialchars($payment['affiliate_app_id'] ?? ''); ?>"
+                               placeholder="Ex: com.ochoppo.app  ou  ochoppo.com.br">
+                        <small style="color:var(--gray-600);">
+                            <strong>Application Identifier</strong> cadastrado na sua Affiliate Key.
+                            Para criar: <a href="https://me.sumup.com" target="_blank">me.sumup.com</a> → Settings → For Developers → Toolkit → Affiliate Keys → campo "Application identifier".
+                            Pode ser qualquer string única (ex: <code>com.ochoppo.erp</code> ou <code>ochoppoficial.com.br</code>).
                         </small>
                     </div>
 

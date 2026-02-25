@@ -108,6 +108,38 @@ requireAuth();
                         A propria API retornara erro se o dispositivo realmente estiver offline.
                     </small>
                 </div>
+
+                <!-- Painel de erro: Affiliate App ID nao configurado -->
+                <div id="affiliateAppIdPanel" style="display:none; margin-top:14px; background:#f8d7da; border:1px solid #f5c6cb; border-radius:8px; padding:14px;">
+                    <h6 style="color:#721c24; margin-bottom:8px;"><i class="fas fa-times-circle"></i> Erro 422 &mdash; Affiliate App ID nao configurado</h6>
+                    <p style="font-size:13px; color:#6c757d; margin-bottom:10px;">
+                        A API SumUp exige <strong>affiliate.app_id</strong> obrigatoriamente em todos os checkouts via Cloud API.
+                        Siga os passos abaixo para configurar:
+                    </p>
+                    <div style="background:#f8f9fa; border-radius:6px; padding:10px; margin-bottom:12px; font-size:13px;">
+                        <strong>Como obter e configurar o Affiliate App ID:</strong>
+                        <ol style="margin:6px 0 0 16px; padding:0;">
+                            <li>Acesse <a href="https://me.sumup.com" target="_blank"><strong>me.sumup.com</strong></a> e faca login.</li>
+                            <li>Va em <strong>Settings &rarr; For Developers &rarr; Toolkit &rarr; Affiliate Keys</strong>.</li>
+                            <li>Copie o valor do campo <strong>"Application identifier"</strong> (ex: <code>com.ochoppo.erp</code>).</li>
+                            <li>Se nao existir, crie uma nova Affiliate Key com qualquer Application identifier (ex: <code>ochoppoficial.com.br</code>).</li>
+                            <li>Va em <a href="pagamentos.php"><strong>Pagamentos &rarr; Integracao SumUp</strong></a>.</li>
+                            <li>Preencha o campo <strong>"Affiliate App ID"</strong> com o valor copiado e clique em <strong>Salvar</strong>.</li>
+                            <li>Volte aqui e tente o checkout novamente.</li>
+                        </ol>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <a href="pagamentos.php" class="btn btn-primary">
+                            <i class="fas fa-cog"></i> Ir para Configuracoes de Pagamento
+                        </a>
+                        <a href="https://me.sumup.com" target="_blank" class="btn btn-secondary">
+                            <i class="fas fa-external-link-alt"></i> Abrir me.sumup.com
+                        </a>
+                        <button class="btn btn-outline-secondary" onclick="document.getElementById('affiliateAppIdPanel').style.display='none'">
+                            <i class="fas fa-times"></i> Fechar
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -349,12 +381,23 @@ async function loadConfig() {
             el.innerHTML = '<span style="color:#dc3545;">Falha ao carregar configuracao.</span>';
             return;
         }
+        const hasAppId = !!(data.affiliate_app_id && data.affiliate_app_id !== '-' && data.affiliate_app_id !== '');
+        const appIdHtml = hasAppId
+            ? '<code style="color:#28a745;">' + data.affiliate_app_id + '</code>'
+            : '<code style="color:#dc3545; font-weight:bold;">NAO CONFIGURADO &mdash; checkout retornara erro 422!</code>';
+
         el.innerHTML =
             '<p style="margin-bottom:6px;"><strong>Merchant:</strong> <code>' + (data.merchant_code || '-') + '</code></p>' +
             '<p style="margin-bottom:6px;"><strong>Token:</strong> <code>' + (data.token_masked || '-') + '</code></p>' +
             '<p style="margin-bottom:6px;"><strong>Affiliate Key:</strong> <code>' + (data.affiliate_key_masked || '-') + '</code></p>' +
-            '<p style="margin-bottom:6px;"><strong>Affiliate App ID:</strong> <code>' + (data.affiliate_app_id || '-') + '</code></p>' +
+            '<p style="margin-bottom:6px;"><strong>Affiliate App ID:</strong> ' + appIdHtml + '</p>' +
             '<p style="margin-bottom:0;"><strong>Affiliate Ativo:</strong> ' + (data.has_affiliate ? '<span style="color:#28a745;">Sim</span>' : '<span style="color:#6c757d;">Nao</span>') + '</p>';
+
+        // Mostrar painel de erro se app_id nao configurado
+        if (!hasAppId) {
+            const panel = document.getElementById('affiliateAppIdPanel');
+            if (panel) panel.style.display = 'block';
+        }
     } catch (e) {
         document.getElementById('cfgBox').innerHTML = '<span style="color:#dc3545;">Erro ao carregar configuracao.</span>';
     }
@@ -540,6 +583,24 @@ async function runCheckout(cardType, force) {
     if (forceMode) params.force_checkout = '1';
 
     const out = await postAction('checkout', params);
+
+    // Detectar erro de affiliate_app_id nao configurado
+    if (out.json && out.json.error && String(out.json.error).includes('affiliate_app_id')) {
+        const panel = document.getElementById('affiliateAppIdPanel');
+        if (panel) panel.style.display = 'block';
+        document.getElementById('forceCheckoutPanel').style.display = 'none';
+        setResult('ERRO: Affiliate App ID nao configurado', out.json);
+        return;
+    }
+
+    // Detectar erro de affiliate_key nao configurada
+    if (out.json && out.json.error && String(out.json.error).includes('affiliate_key')) {
+        const panel = document.getElementById('affiliateAppIdPanel');
+        if (panel) panel.style.display = 'block';
+        document.getElementById('forceCheckoutPanel').style.display = 'none';
+        setResult('ERRO: Affiliate Key nao configurada', out.json);
+        return;
+    }
 
     // Se a resposta indica reader_not_ready, mostrar painel de forca
     if (out.json && out.json.reader_not_ready) {

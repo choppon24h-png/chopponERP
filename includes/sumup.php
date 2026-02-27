@@ -1,8 +1,10 @@
 <?php
 /**
  * Integracao com SumUp
- * v2.1 - ajuste de affiliate (key/app_id/foreign_transaction_id)
- *      - melhora de diagnostico e logs de pagamentos
+ * v2.2 - timeout reduzido de 30s para 20s
+ *      - getReaderStatus aceita state=IDLE+Wi-Fi como ONLINE (SumUp Solo comportamento real)
+ *      - affiliate_key/app_id com fallback para constantes do config.php
+ *      - loadPaymentConfig: prioridade config.php > banco de dados
  */
 
 class SumUpIntegration {
@@ -18,8 +20,9 @@ class SumUpIntegration {
         $this->merchant_code = SUMUP_MERCHANT_CODE;
         $this->checkout_url  = SUMUP_CHECKOUT_URL;
         $this->merchant_url  = SUMUP_MERCHANT_URL . $this->merchant_code;
-        $this->affiliate_key = '';
-        $this->affiliate_app_id = '';
+        // Fallback primário: constantes do config.php (sempre disponíveis)
+        $this->affiliate_key    = defined('SUMUP_AFFILIATE_KEY')    ? SUMUP_AFFILIATE_KEY    : '';
+        $this->affiliate_app_id = defined('SUMUP_AFFILIATE_APP_ID') ? SUMUP_AFFILIATE_APP_ID : '';
 
         $this->loadPaymentConfig();
     }
@@ -265,14 +268,25 @@ class SumUpIntegration {
         $response = $this->makeRequest($url, 'GET', null);
 
         if ($response['status'] === 200 && isset($response['data'])) {
-            $data = $response['data'];
+            $data        = $response['data'];
             $status_data = $data->data ?? $data;
             $raw_status  = strtoupper($status_data->status ?? 'OFFLINE');
+            $raw_state   = strtoupper($status_data->state ?? '');
+            $connection  = $status_data->connection_type ?? null;
+
+            // Aceita ONLINE explícito OU state=IDLE com conexão ativa
+            // (SumUp Solo retorna status=OFFLINE mas state=IDLE quando pronto)
+            $is_ready = ($raw_status === 'ONLINE')
+                     || ($raw_state === 'IDLE'       && !empty($connection))
+                     || ($raw_state === 'READY'      && !empty($connection))
+                     || ($raw_state === 'PROCESSING');
+
             return [
-                'online'        => $raw_status === 'ONLINE',
-                'status_label'  => $raw_status,
+                'online'        => $is_ready,
+                'status_label'  => $is_ready ? 'ONLINE' : $raw_status,
+                'state'         => $raw_state,
                 'battery'       => $status_data->battery_level ?? null,
-                'connection'    => $status_data->connection_type ?? null,
+                'connection'    => $connection,
                 'firmware'      => $status_data->firmware_version ?? null,
                 'last_activity' => $status_data->last_activity ?? null,
             ];
@@ -281,6 +295,7 @@ class SumUpIntegration {
         return [
             'online'        => false,
             'status_label'  => 'OFFLINE',
+            'state'         => null,
             'battery'       => null,
             'connection'    => null,
             'firmware'      => null,
@@ -321,8 +336,8 @@ class SumUpIntegration {
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 20);  // Reduzido de 30s para 20s
 
         if ($data !== null && ($method === 'POST' || $method === 'PUT' || $method === 'PATCH')) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));

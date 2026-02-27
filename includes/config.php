@@ -70,6 +70,9 @@ define('SUMUP_TOKEN', 'sup_sk_8vNpSEJPVudqJrWPdUlomuE3EfVofw1bL');
 define('SUMUP_MERCHANT_CODE', 'MCTSYDUE');
 define('SUMUP_CHECKOUT_URL', 'https://api.sumup.com/v0.1/checkouts/');
 define('SUMUP_MERCHANT_URL', 'https://api.sumup.com/v0.1/merchants/');
+// Affiliate Keys — me.sumup.com > Settings > For Developers > Toolkit > Affiliate Keys
+define('SUMUP_AFFILIATE_KEY',    'sup_afk_bULTbTDP0leInwIXud28LYYVmYiZiKYy');
+define('SUMUP_AFFILIATE_APP_ID', 'CHOPPONALMEIDA');
 
 // Configurações JWT
 define('JWT_SECRET', 'teaste');

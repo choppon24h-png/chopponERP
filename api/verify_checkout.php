@@ -8,6 +8,17 @@
  * (o webhook pode gravar qualquer um desses dependendo do tipo de transacao)
  */
 header('Content-Type: application/json');
+
+// Proteção global: garante JSON válido mesmo em erro fatal
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        if (!headers_sent()) { header('Content-Type: application/json'); }
+        echo json_encode(['success'=>false,'error'=>'Erro interno: '.$error['message']], JSON_UNESCAPED_UNICODE);
+    }
+});
+
+
 require_once '../includes/config.php';
 require_once '../includes/jwt.php';
 require_once '../includes/logger.php';

@@ -5,6 +5,23 @@
  */
 
 header('Content-Type: application/json');
+
+// Proteção global: garante que SEMPRE retorna JSON válido mesmo em erro fatal
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        if (!headers_sent()) {
+            header('Content-Type: application/json');
+        }
+        echo json_encode([
+            'success'    => false,
+            'error'      => 'Erro interno do servidor',
+            'error_type' => 'fatal_error',
+            'debug'      => $error['message'] . ' em ' . $error['file'] . ':' . $error['line']
+        ], JSON_UNESCAPED_UNICODE);
+    }
+});
+
 require_once '../includes/config.php';
 require_once '../includes/jwt.php';
 require_once '../includes/sumup.php';
@@ -115,13 +132,15 @@ if ($input['payment_method'] === 'pix') {
         ");
         $stmt->execute([$result['checkout_id'], $result['pix_code'], $result['response'], $order_id]);
         
-        // Gerar QR Code
-        $qr_code_base64 = generateQRCode($result['pix_code']);
+        // Gerar QR Code via método da classe SumUpIntegration
+        $qr_code_base64 = $sumup->generateQRCode($result['pix_code']);
         
         http_response_code(200);
         echo json_encode([
+            'success'     => true,
             'checkout_id' => $result['checkout_id'],
-            'qr_code' => $qr_code_base64
+            'qr_code'     => $qr_code_base64,
+            'pix_code'    => $result['pix_code']
         ]);
     } else {
         http_response_code(500);

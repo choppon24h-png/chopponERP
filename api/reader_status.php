@@ -13,6 +13,29 @@
  */
 
 header('Content-Type: application/json');
+
+// Proteção global: garante que SEMPRE retorna JSON válido mesmo em erro fatal
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        if (!headers_sent()) {
+            header('Content-Type: application/json');
+        }
+        echo json_encode([
+            'leitora_nome'     => 'Erro interno',
+            'reader_id'        => null,
+            'serial'           => null,
+            'status_leitora'   => 'erro',
+            'api_ativa'        => false,
+            'bateria'          => null,
+            'conexao'          => null,
+            'firmware'         => null,
+            'ultima_atividade' => null,
+            'mensagem'         => 'Erro interno do servidor: ' . ($error['message'] ?? 'desconhecido')
+        ], JSON_UNESCAPED_UNICODE);
+    }
+});
+
 require_once '../includes/config.php';
 require_once '../includes/jwt.php';
 require_once '../includes/logger.php';
@@ -61,11 +84,18 @@ $reader_id     = $tap['reader_id'];
 $pairing_code  = $tap['pairing_code'] ?? 'Desconhecido';
 $merchant_code = SUMUP_MERCHANT_CODE;
 
-// Buscar configuração SumUp (token)
-$stmt2 = $conn->prepare("SELECT token_sumup FROM payment_config LIMIT 1");
-$stmt2->execute();
-$payment = $stmt2->fetch(PDO::FETCH_ASSOC);
-$sumup_token = $payment['token_sumup'] ?? SUMUP_TOKEN;
+// Buscar token SumUp: prioridade config.php > banco de dados
+$sumup_token = SUMUP_TOKEN;
+try {
+    $stmt2 = $conn->prepare("SELECT token_sumup FROM payment LIMIT 1");
+    $stmt2->execute();
+    $payment = $stmt2->fetch(PDO::FETCH_ASSOC);
+    if (!empty($payment['token_sumup'])) {
+        $sumup_token = $payment['token_sumup'];
+    }
+} catch (Exception $e) {
+    // Usa o token do config.php como fallback
+}
 
 // ─────────────────────────────────────────────────────────────
 // 1. Verificar se a API SumUp está ativa (valida o token)
@@ -142,13 +172,21 @@ if ($http_status === 200) {
     $firmware     = $data['firmware_version'] ?? null;
     $ultima_atividade = $data['last_activity'] ?? null;
 
-    if ($sumup_status === 'ONLINE') {
-        if ($sumup_state === 'BUSY') {
+    // Aceita ONLINE explícito OU state=IDLE com conexão ativa
+    // SumUp Solo retorna status=OFFLINE mas state=IDLE quando pronto para transacionar
+    $sumup_state_upper = strtoupper($sumup_state ?? '');
+    $is_ready = ($sumup_status === 'ONLINE')
+             || ($sumup_state_upper === 'IDLE'       && !empty($conexao))
+             || ($sumup_state_upper === 'READY'      && !empty($conexao))
+             || ($sumup_state_upper === 'PROCESSING');
+
+    if ($is_ready) {
+        if ($sumup_state_upper === 'BUSY') {
             $status_leitora  = 'online';
             $mensagem_status = 'Leitora ONLINE e ocupada com outra transação.';
         } else {
             $status_leitora  = 'online';
-            $mensagem_status = 'Leitora ONLINE e pronta para uso.';
+            $mensagem_status = 'Leitora ONLINE e pronta para uso. (state=' . $sumup_state_upper . ', conexão=' . ($conexao ?? 'N/A') . ')';
         }
     } else {
         // OFFLINE — verificar se nunca se conectou (last_activity null)

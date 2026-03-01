@@ -9,6 +9,7 @@
  */
 header('Content-Type: application/json');
 
+
 // Proteção global: garante JSON válido mesmo em erro fatal
 register_shutdown_function(function() {
     $error = error_get_last();

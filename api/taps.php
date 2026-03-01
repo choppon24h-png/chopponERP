@@ -4,6 +4,11 @@
  * GET /api/taps.php
  */
 
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 header('Content-Type: application/json');
 require_once '../includes/config.php';
 require_once '../includes/jwt.php';
@@ -14,6 +19,7 @@ $token = $headers['token'] ?? $headers['Token'] ?? '';
 // Validar token
 if (!jwtValidate($token)) {
     http_response_code(401);
+    ob_clean();
     echo json_encode(['error' => 'Token inválido']);
     exit;
 }
@@ -55,4 +61,5 @@ if ($user->type == 1) {
 $taps = $stmt->fetchAll();
 
 http_response_code(200);
+ob_clean();
 echo json_encode($taps);

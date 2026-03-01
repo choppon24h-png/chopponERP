@@ -22,6 +22,11 @@
  * @author ChopponERP Team
  */
 
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 header('Content-Type: application/json; charset=utf-8');
 
 require_once '../includes/config.php';
@@ -29,6 +34,7 @@ require_once '../includes/auth.php';
 
 if (!isLoggedIn()) {
     http_response_code(401);
+    ob_clean();
     echo json_encode(['success' => false, 'error' => 'Nao autenticado']);
     exit;
 }
@@ -332,6 +338,7 @@ $logger->info('Request received', [
 // ============================================================================
 if ($action === 'config') {
     $logger->info('Config requested');
+    ob_clean();
     echo json_encode([
         'success' => true,
         'merchant_code' => $cfg['merchant_code'],
@@ -363,6 +370,7 @@ if ($action === 'readers') {
             'http_code' => $res['http_code'],
             'error' => $res['data'] ?? $res['raw'],
         ]);
+        ob_clean();
         echo json_encode([
             'success' => false,
             'error' => 'Falha ao listar leitoras na SumUp',
@@ -400,6 +408,7 @@ if ($action === 'readers') {
 
     $logger->info('Readers listed successfully', ['count' => count($readers)]);
 
+    ob_clean();
     echo json_encode([
         'success' => true,
         'merchant_code' => $cfg['merchant_code'],
@@ -435,6 +444,7 @@ if ($action === 'readers_db') {
     } catch (Exception $e) {
         $logger->error('Failed to query sumup_readers table', ['error' => $e->getMessage()]);
         http_response_code(500);
+        ob_clean();
         echo json_encode([
             'success' => false,
             'error' => 'Falha ao consultar tabela sumup_readers',
@@ -500,6 +510,7 @@ if ($action === 'readers_db') {
             }
             unset($ar);
             $logger->info('Using API fallback (DB empty)', ['count' => count($apiReaders)]);
+            ob_clean();
             echo json_encode([
                 'success' => true,
                 'merchant_code' => $cfg['merchant_code'],
@@ -510,6 +521,7 @@ if ($action === 'readers_db') {
         }
     }
 
+    ob_clean();
     echo json_encode([
         'success' => true,
         'merchant_code' => $cfg['merchant_code'],
@@ -527,6 +539,7 @@ if ($action === 'reader_status') {
     if ($reader_id === '' || !InputValidator::validateReaderId($reader_id)) {
         http_response_code(400);
         $logger->warning('Invalid reader_id provided', ['reader_id' => $reader_id]);
+        ob_clean();
         echo json_encode(['success' => false, 'error' => 'reader_id obrigatorio e deve ser válido']);
         exit;
     }
@@ -542,6 +555,7 @@ if ($action === 'reader_status') {
         'http_status' => $r2['http_code'],
     ]);
 
+    ob_clean();
     echo json_encode([
         'success' => true,
         'reader' => $r1['data'],
@@ -571,6 +585,7 @@ if ($action === 'checkout') {
     if ($reader_id === '' || !InputValidator::validateReaderId($reader_id)) {
         http_response_code(400);
         $logger->warning('Checkout: invalid reader_id', ['reader_id' => $reader_id]);
+        ob_clean();
         echo json_encode(['success' => false, 'error' => 'reader_id obrigatorio e deve ser válido']);
         exit;
     }
@@ -578,6 +593,7 @@ if ($action === 'checkout') {
     if (!InputValidator::validateCardType($card_type)) {
         http_response_code(400);
         $logger->warning('Checkout: invalid card_type', ['card_type' => $card_type]);
+        ob_clean();
         echo json_encode(['success' => false, 'error' => 'card_type invalido (debit ou credit)']);
         exit;
     }
@@ -585,6 +601,7 @@ if ($action === 'checkout') {
     if (!InputValidator::validateAmount($amount_brl)) {
         http_response_code(400);
         $logger->warning('Checkout: invalid amount', ['amount' => $amount_brl]);
+        ob_clean();
         echo json_encode(['success' => false, 'error' => 'amount invalido (0 < amount <= 999999.99)']);
         exit;
     }
@@ -643,6 +660,7 @@ if ($action === 'checkout') {
             'detail'          => $detail,
         ]);
 
+        ob_clean();
         echo json_encode([
             'success'          => false,
             'reader_not_ready' => true,
@@ -704,6 +722,7 @@ if ($action === 'checkout') {
             'reader_id' => $reader_id,
             'action'    => 'Acesse: Pagamentos > Integração SumUp > Affiliate Key',
         ]);
+        ob_clean();
         echo json_encode([
             'success'   => false,
             'http_code' => 422,
@@ -719,6 +738,7 @@ if ($action === 'checkout') {
             'reader_id' => $reader_id,
             'action'    => 'Acesse: Pagamentos > Integração SumUp > Affiliate App ID',
         ]);
+        ob_clean();
         echo json_encode([
             'success'   => false,
             'http_code' => 422,
@@ -762,6 +782,7 @@ if ($action === 'checkout') {
         'curl_error' => $res['curl_error'],
     ]);
 
+    ob_clean();
     echo json_encode([
         'success' => in_array($res['http_code'], [200, 201, 202], true),
         'http_code' => $res['http_code'],
@@ -781,6 +802,7 @@ if ($action === 'cancel') {
     if ($reader_id === '' || !InputValidator::validateReaderId($reader_id)) {
         http_response_code(400);
         $logger->warning('Cancel: invalid reader_id', ['reader_id' => $reader_id]);
+        ob_clean();
         echo json_encode(['success' => false, 'error' => 'reader_id obrigatorio e deve ser válido']);
         exit;
     }
@@ -797,6 +819,7 @@ if ($action === 'cancel') {
         'curl_error' => $res['curl_error'],
     ]);
 
+    ob_clean();
     echo json_encode([
         'success' => in_array($res['http_code'], [200, 202, 204], true),
         'http_code' => $res['http_code'],
@@ -817,6 +840,7 @@ if ($action === 'delete_reader') {
     if ($reader_id === '' || !InputValidator::validateReaderId($reader_id)) {
         http_response_code(400);
         $logger->warning('Delete: invalid reader_id', ['reader_id' => $reader_id]);
+        ob_clean();
         echo json_encode([
             'success' => false,
             'error' => 'reader_id obrigatorio e deve ser válido',
@@ -829,6 +853,7 @@ if ($action === 'delete_reader') {
     if ($confirm !== 'yes') {
         $logger->info('Delete confirmation required', ['reader_id' => $reader_id]);
         http_response_code(400);
+        ob_clean();
         echo json_encode([
             'success' => false,
             'error' => 'Confirmação necessária para deletar reader',
@@ -860,6 +885,7 @@ if ($action === 'delete_reader') {
         http_response_code($res['http_code'] === 404 ? 404 : 422);
     }
 
+    ob_clean();
     echo json_encode([
         'success' => $success,
         'http_code' => $res['http_code'],
@@ -887,6 +913,7 @@ if ($action === 'delete_all_readers') {
     if ($confirm !== 'yes' || $confirmAll !== 'DELETE_ALL') {
         $logger->warning('Delete all: confirmation required');
         http_response_code(400);
+        ob_clean();
         echo json_encode([
             'success' => false,
             'error' => 'Dupla confirmação necessária para deletar TODOS os readers',
@@ -910,6 +937,7 @@ if ($action === 'delete_all_readers') {
         $logger->error('Delete all: failed to list readers', [
             'http_code' => $listRes['http_code'],
         ]);
+        ob_clean();
         echo json_encode([
             'success' => false,
             'error' => 'Falha ao listar readers para deleção',
@@ -938,6 +966,7 @@ if ($action === 'delete_all_readers') {
 
     if (count($readers) === 0) {
         $logger->warning('Delete all: no readers found to delete');
+        ob_clean();
         echo json_encode([
             'success' => true,
             'summary' => $results,
@@ -991,6 +1020,7 @@ if ($action === 'delete_all_readers') {
         'failed' => $results['failed'],
     ]);
 
+    ob_clean();
     echo json_encode([
         'success' => $results['failed'] === 0,
         'summary' => $results,
@@ -1036,6 +1066,7 @@ if ($action === 'health_check') {
     $logger->info('Health check completed', $checks);
 
     http_response_code($allHealthy ? 200 : 503);
+    ob_clean();
     echo json_encode([
         'success' => $allHealthy,
         'status' => $allHealthy ? 'healthy' : 'unhealthy',
@@ -1050,6 +1081,7 @@ if ($action === 'health_check') {
 // ============================================================================
 http_response_code(400);
 $logger->warning('Invalid action requested', ['action' => $action]);
+ob_clean();
 echo json_encode([
     'success' => false,
     'error' => "Acao invalida: {$action}",

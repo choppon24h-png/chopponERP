@@ -27,6 +27,7 @@ register_shutdown_function(function () {
             header('Content-Type: application/json');
             http_response_code(500);
         }
+        ob_clean();
         echo json_encode([
             'success'    => false,
             'error'      => 'Erro interno do servidor: ' . $error['message'],
@@ -51,9 +52,9 @@ $token   = $headers['token'] ?? $headers['Token'] ?? '';
 // ── Autenticação JWT ──────────────────────────────────────────────────────────
 if (!jwtValidate($token)) {
     http_response_code(401);
+    ob_clean();
     echo json_encode(['error' => 'Token inválido', 'error_type' => 'AUTH_ERROR']);
     ob_end_flush();
-    exit;
 }
 
 $input = $_POST;
@@ -63,9 +64,9 @@ $required_fields = ['valor', 'descricao', 'android_id', 'payment_method', 'quant
 foreach ($required_fields as $field) {
     if (empty($input[$field])) {
         http_response_code(400);
+        ob_clean();
         echo json_encode(['error' => "$field é obrigatório", 'error_type' => 'MISSING_FIELD']);
         ob_end_flush();
-        exit;
     }
 }
 
@@ -81,9 +82,9 @@ try {
 
     if (!$tap) {
         http_response_code(404);
+        ob_clean();
         echo json_encode(['error' => 'TAP não encontrada', 'error_type' => 'TAP_NOT_FOUND']);
         ob_end_flush();
-        exit;
     }
 
     // ── Criar pedido no banco ─────────────────────────────────────────────────
@@ -146,6 +147,7 @@ try {
             ]);
 
             http_response_code(200);
+            ob_clean();
             echo json_encode([
                 'success'     => true,
                 'checkout_id' => $result['checkout_id'],
@@ -156,6 +158,7 @@ try {
             $conn->prepare("UPDATE `order` SET checkout_status = 'FAILED' WHERE id = ?")->execute([$order_id]);
             Logger::error("Create Order - PIX falhou", ['order_id' => $order_id]);
             http_response_code(500);
+            ob_clean();
             echo json_encode([
                 'error'      => 'Erro ao criar checkout PIX. Verifique a configuração SumUp.',
                 'error_type' => 'PIX_CHECKOUT_FAILED',
@@ -163,7 +166,6 @@ try {
         }
 
         ob_end_flush();
-        exit;
     }
 
     // ── DÉBITO / CRÉDITO (Cloud API - SumUp Solo) ─────────────────────────────
@@ -171,12 +173,12 @@ try {
         $conn->prepare("UPDATE `order` SET checkout_status = 'FAILED' WHERE id = ?")->execute([$order_id]);
         Logger::error("Create Order - Sem reader_id", ['tap_id' => $tap['id']]);
         http_response_code(400);
+        ob_clean();
         echo json_encode([
             'error'      => 'Esta TAP não possui leitora de cartão configurada. Configure o pairing_code no painel administrativo.',
             'error_type' => 'NO_READER_CONFIGURED',
         ]);
         ob_end_flush();
-        exit;
     }
 
     Logger::info("Create Order - Iniciando checkout cartão", [
@@ -220,6 +222,7 @@ try {
         $stmt->execute([$result['checkout_id'], $result['response'] ?? '', $order_id]);
 
         http_response_code(200);
+        ob_clean();
         echo json_encode([
             'success'       => true,
             'checkout_id'   => $result['checkout_id'],
@@ -243,6 +246,7 @@ try {
         $conn->prepare("UPDATE `order` SET checkout_status = 'FAILED' WHERE id = ?")->execute([$order_id]);
 
         http_response_code(500);
+        ob_clean();
         echo json_encode([
             'error'      => $error_msg,
             'error_type' => $error_type,
@@ -265,6 +269,7 @@ try {
     if (!headers_sent()) {
         http_response_code(500);
     }
+    ob_clean();
     echo json_encode([
         'success'    => false,
         'error'      => 'Erro interno: ' . $e->getMessage(),

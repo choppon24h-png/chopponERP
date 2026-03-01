@@ -4,6 +4,11 @@
  * Recebe notificações de pagamento do Mercado Pago
  */
 
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/MercadoPagoAPI.php';
 
@@ -22,6 +27,7 @@ file_put_contents(__DIR__ . '/../logs/webhook_mercadopago.log', json_encode($log
 // Responder imediatamente ao Mercado Pago
 http_response_code(200);
 header('Content-Type: application/json');
+ob_clean();
 echo json_encode(['status' => 'received']);
 
 // Processar webhook em background

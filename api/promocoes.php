@@ -4,6 +4,11 @@
  * Endpoint para verificar promoções ativas e aplicar descontos
  */
 
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST');
@@ -15,12 +20,14 @@ require_once '../includes/promocoes.php';
 // Função para retornar erro
 function returnError($message, $code = 400) {
     http_response_code($code);
+    ob_clean();
     echo json_encode(['error' => $message]);
     exit;
 }
 
 // Função para retornar sucesso
 function returnSuccess($data) {
+    ob_clean();
     echo json_encode(['success' => true, 'data' => $data]);
     exit;
 }

@@ -7,6 +7,11 @@
  * CORRECAO: aceita todos os status de sucesso: PAID, SUCCESSFUL, APPROVED
  * (o webhook pode gravar qualquer um desses dependendo do tipo de transacao)
  */
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 header('Content-Type: application/json');
 
 
@@ -15,6 +20,7 @@ register_shutdown_function(function() {
     $error = error_get_last();
     if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
         if (!headers_sent()) { header('Content-Type: application/json'); }
+        ob_clean();
         echo json_encode(['success'=>false,'error'=>'Erro interno: '.$error['message']], JSON_UNESCAPED_UNICODE);
     }
 });
@@ -29,6 +35,7 @@ $token = $headers['token'] ?? $headers['Token'] ?? '';
 
 if (!jwtValidate($token)) {
     http_response_code(401);
+    ob_clean();
     echo json_encode(['error' => 'Token inválido']);
     exit;
 }
@@ -39,6 +46,7 @@ $checkout_id = $input['checkout_id'] ?? '';
 
 if (empty($android_id) || empty($checkout_id)) {
     http_response_code(400);
+    ob_clean();
     echo json_encode(['error' => 'android_id e checkout_id são obrigatórios']);
     exit;
 }
@@ -61,6 +69,7 @@ if (!$order) {
         'android_id'  => $android_id
     ]);
     http_response_code(200);
+    ob_clean();
     echo json_encode(['status' => 'false', 'debug' => 'checkout_id not in database']);
     exit;
 }
@@ -87,10 +96,12 @@ if (in_array($status, $status_aprovados)) {
         'status'      => $status
     ]);
     http_response_code(200);
+    ob_clean();
     echo json_encode(['status' => 'success']);
 } else {
     // Ainda pendente ou falhou
     http_response_code(200);
+    ob_clean();
     echo json_encode([
         'status'          => 'false',
         'checkout_status' => $status

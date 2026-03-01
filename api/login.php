@@ -4,6 +4,11 @@
  * POST /api/login.php
  */
 
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 header('Content-Type: application/json');
 require_once '../includes/config.php';
 require_once '../includes/jwt.php';
@@ -15,6 +20,7 @@ $password = $input['password'] ?? '';
 
 if (empty($email) || empty($password)) {
     http_response_code(400);
+    ob_clean();
     echo json_encode(['error' => 'Email e senha são obrigatórios']);
     exit;
 }
@@ -45,6 +51,7 @@ if ($user && password_verify($password, $user['password'])) {
     ]);
     
     http_response_code(200);
+    ob_clean();
     echo json_encode([
         'token' => $token,
         'user' => [
@@ -57,5 +64,6 @@ if ($user && password_verify($password, $user['password'])) {
     ]);
 } else {
     http_response_code(401);
+    ob_clean();
     echo json_encode(['user' => false, 'error' => 'Credenciais inválidas']);
 }

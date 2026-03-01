@@ -38,6 +38,11 @@
  *   POST action=check_api    → Verifica se o token SumUp está válido
  *   GET  action=list         → Lista todas as leitoras com status atualizado
  */
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 header('Content-Type: application/json; charset=utf-8');
 require_once '../includes/config.php';
 require_once '../includes/auth.php';
@@ -45,6 +50,7 @@ require_once '../includes/auth.php';
 // Verificar autenticação
 if (!isLoggedIn()) {
     http_response_code(401);
+    ob_clean();
     echo json_encode(['error' => 'Não autenticado']);
     exit;
 }
@@ -202,6 +208,7 @@ if ($action === 'check_api') {
             $readers_list = array_values($data);
         }
         $count = count($readers_list);
+        ob_clean();
         echo json_encode([
             'api_ok'   => true,
             'merchant' => $merchant_code,
@@ -255,6 +262,7 @@ if ($action === 'check_api') {
         'curl_error_checkouts' => $err_checkout,
     ]);
 
+    ob_clean();
     echo json_encode([
         'api_ok'         => false,
         'error_code'     => $error_code,
@@ -291,6 +299,7 @@ if ($action === 'list') {
     }
     unset($r);
 
+    ob_clean();
     echo json_encode(['success' => true, 'readers' => $readers], JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -305,12 +314,14 @@ if ($action === 'create') {
 
     if (empty($pairing_code)) {
         http_response_code(400);
+        ob_clean();
         echo json_encode(['error' => 'Código de pareamento é obrigatório']);
         exit;
     }
 
     if (!preg_match('/^[A-Z0-9]{8,9}$/', $pairing_code)) {
         http_response_code(400);
+        ob_clean();
         echo json_encode(['error' => 'Código de pareamento inválido. Deve ter 8-9 caracteres alfanuméricos (ex: A4RZALFHY).']);
         exit;
     }
@@ -323,6 +334,7 @@ if ($action === 'create') {
     if ($result['http_code'] !== 201 && $result['http_code'] !== 200) {
         $err_msg = $result['data']['message'] ?? $result['data']['error'] ?? 'Erro ao parear leitora';
         http_response_code(422);
+        ob_clean();
         echo json_encode([
             'error'     => $err_msg,
             'http_code' => $result['http_code'],
@@ -365,6 +377,7 @@ if ($action === 'create') {
         $mensagem = "Leitora criada (status: {$status}). Ligue o SumUp Solo para completar o pareamento.";
     }
 
+    ob_clean();
     echo json_encode([
         'success'      => true,
         'reader_id'    => $reader_id,
@@ -392,6 +405,7 @@ if ($action === 'test') {
 
     if (empty($reader_id)) {
         http_response_code(400);
+        ob_clean();
         echo json_encode(['error' => 'reader_id é obrigatório']);
         exit;
     }
@@ -399,6 +413,7 @@ if ($action === 'test') {
     // Validar formato do reader_id (BUG CORRIGIDO: {26} não {27})
     if (!validateReaderId($reader_id)) {
         http_response_code(400);
+        ob_clean();
         echo json_encode([
             'error'   => 'reader_id inválido. Formato esperado: rdr_ + 26 caracteres alfanuméricos (total 30 chars).',
             'exemplo' => 'rdr_1JHCGHNM3095NBKJP2CMDWJTXC',
@@ -414,6 +429,7 @@ if ($action === 'test') {
 
     if (!$reader) {
         http_response_code(404);
+        ob_clean();
         echo json_encode(['error' => 'Leitora não encontrada no banco de dados']);
         exit;
     }
@@ -428,6 +444,7 @@ if ($action === 'test') {
     curl_close($ch);
 
     if ($code_r !== 200) {
+        ob_clean();
         echo json_encode([
             'success'      => false,
             'online'       => false,
@@ -460,6 +477,7 @@ if ($action === 'test') {
         $mensagem = "⚠️ Status SumUp: {$sumup_status}. Verifique se o SumUp Solo está ligado e com internet.";
     }
 
+    ob_clean();
     echo json_encode([
         'success'       => true,
         'online'        => $st['online'],
@@ -487,6 +505,7 @@ if ($action === 'delete') {
 
     if (empty($reader_id)) {
         http_response_code(400);
+        ob_clean();
         echo json_encode(['error' => 'reader_id é obrigatório']);
         exit;
     }
@@ -494,6 +513,7 @@ if ($action === 'delete') {
     // Validar formato do reader_id (BUG CORRIGIDO: {26} não {27})
     if (!validateReaderId($reader_id)) {
         http_response_code(400);
+        ob_clean();
         echo json_encode([
             'error'   => 'reader_id inválido. Formato esperado: rdr_ + 26 caracteres alfanuméricos (total 30 chars).',
             'exemplo' => 'rdr_1JHCGHNM3095NBKJP2CMDWJTXC',
@@ -516,6 +536,7 @@ if ($action === 'delete') {
             'raw' => $result['raw'],
         ]);
         http_response_code(422);
+        ob_clean();
         echo json_encode([
             'error'     => 'Erro ao excluir leitora na SumUp: ' . ($result['data']['message'] ?? 'Erro desconhecido'),
             'http_code' => $result['http_code'],
@@ -534,6 +555,7 @@ if ($action === 'delete') {
 
     paymentLog('SumUp delete reader sucesso', ['reader_id' => $reader_id]);
 
+    ob_clean();
     echo json_encode([
         'success'  => true,
         'mensagem' => 'Leitora excluída com sucesso. No SumUp Solo: Connections → API → Disconnect para completar a desvinculação.',
@@ -586,6 +608,7 @@ if ($action === 'delete_all') {
     }
 
     if (empty($all_ids)) {
+        ob_clean();
         echo json_encode([
             'success'   => true,
             'excluidas' => 0,
@@ -635,6 +658,7 @@ if ($action === 'delete_all') {
     ]);
 
     if (!empty($erros)) {
+        ob_clean();
         echo json_encode([
             'success'   => false,
             'excluidas' => $excluidas,
@@ -643,6 +667,7 @@ if ($action === 'delete_all') {
             'detalhes'  => $detalhes,
         ], JSON_UNESCAPED_UNICODE);
     } else {
+        ob_clean();
         echo json_encode([
             'success'   => true,
             'excluidas' => $excluidas,
@@ -664,6 +689,7 @@ if ($action === 'update_estab') {
 
     if (empty($reader_id)) {
         http_response_code(400);
+        ob_clean();
         echo json_encode(['error' => 'reader_id é obrigatório']);
         exit;
     }
@@ -679,6 +705,7 @@ if ($action === 'update_estab') {
         $estab_nome = $estab['name'] ?? null;
     }
 
+    ob_clean();
     echo json_encode([
         'success'              => true,
         'estabelecimento_nome' => $estab_nome,
@@ -693,4 +720,5 @@ if ($action === 'update_estab') {
 // Ação inválida
 // ─────────────────────────────────────────────────────────────
 http_response_code(400);
+ob_clean();
 echo json_encode(['error' => "Ação '{$action}' inválida"]);

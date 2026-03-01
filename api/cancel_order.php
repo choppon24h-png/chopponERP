@@ -4,6 +4,11 @@
  * POST /api/cancel_order.php
  */
 
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 header('Content-Type: application/json');
 
 // Proteção global: garante JSON válido mesmo em erro fatal
@@ -11,6 +16,7 @@ register_shutdown_function(function() {
     $error = error_get_last();
     if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
         if (!headers_sent()) { header('Content-Type: application/json'); }
+        ob_clean();
         echo json_encode(['success'=>false,'error'=>'Erro interno: '.$error['message']], JSON_UNESCAPED_UNICODE);
     }
 });
@@ -26,6 +32,7 @@ $token = $headers['token'] ?? $headers['Token'] ?? '';
 // Validar token
 if (!jwtValidate($token)) {
     http_response_code(401);
+    ob_clean();
     echo json_encode(['error' => 'Token inválido']);
     exit;
 }
@@ -35,6 +42,7 @@ $checkout_id = $input['checkout_id'] ?? '';
 
 if (empty($checkout_id)) {
     http_response_code(400);
+    ob_clean();
     echo json_encode(['error' => 'checkout_id é obrigatório']);
     exit;
 }
@@ -54,6 +62,7 @@ $order = $stmt->fetch();
 
 if (!$order) {
     http_response_code(404);
+    ob_clean();
     echo json_encode(['error' => 'Pedido não encontrado']);
     exit;
 }
@@ -79,4 +88,5 @@ $stmt = $conn->prepare("
 $stmt->execute([$order['id']]);
 
 http_response_code(200);
+ob_clean();
 echo json_encode(['success' => true, 'cancelled_at_sumup' => $cancelled]);

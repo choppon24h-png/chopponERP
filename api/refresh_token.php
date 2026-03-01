@@ -5,6 +5,11 @@
  * Versão 1.0
  */
 
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 header('Content-Type: application/json');
 require_once '../includes/config.php';
 require_once '../includes/jwt.php';
@@ -15,6 +20,7 @@ $refresh_token = $input['refresh_token'] ?? '';
 
 if (empty($refresh_token)) {
     http_response_code(400);
+    ob_clean();
     echo json_encode(['error' => 'Refresh token é obrigatório']);
     exit;
 }
@@ -24,6 +30,7 @@ $decoded = jwtValidateRefreshToken($refresh_token);
 
 if ($decoded === false) {
     http_response_code(401);
+    ob_clean();
     echo json_encode(['error' => 'Refresh token inválido ou expirado']);
     exit;
 }
@@ -31,6 +38,7 @@ if ($decoded === false) {
 // Verificar se está na blacklist
 if (jwtIsBlacklisted($decoded->jti)) {
     http_response_code(401);
+    ob_clean();
     echo json_encode(['error' => 'Refresh token foi revogado']);
     exit;
 }
@@ -45,6 +53,7 @@ $user = $stmt->fetch();
 
 if (!$user) {
     http_response_code(404);
+    ob_clean();
     echo json_encode(['error' => 'Usuário não encontrado']);
     exit;
 }
@@ -81,6 +90,7 @@ Logger::info("Token renovado", [
 ]);
 
 http_response_code(200);
+ob_clean();
 echo json_encode([
     'token' => $new_token,
     'refresh_token' => $new_refresh_token,

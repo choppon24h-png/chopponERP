@@ -4,6 +4,11 @@
  * POST /api/tap_login.php
  */
 
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 header('Content-Type: application/json');
 require_once '../includes/config.php';
 require_once '../includes/jwt.php';
@@ -15,6 +20,7 @@ $senha = $input['senha'] ?? '';
 
 if (empty($android_id) || empty($senha)) {
     http_response_code(400);
+    ob_clean();
     echo json_encode(['error' => 'Android ID e senha são obrigatórios']);
     exit;
 }
@@ -26,11 +32,13 @@ $tap = $stmt->fetch();
 
 if ($tap && password_verify($senha, $tap['senha'])) {
     http_response_code(200);
+    ob_clean();
     echo json_encode([
         'success' => true,
     ]);
 } else {
     http_response_code(200);
+    ob_clean();
     echo json_encode(['error' => 'Credenciais inválidas']);
 }
 ?>

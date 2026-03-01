@@ -12,6 +12,11 @@
  * Não cria checkouts de teste — diagnóstico limpo e preciso.
  */
 
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 header('Content-Type: application/json');
 
 // Proteção global: garante que SEMPRE retorna JSON válido mesmo em erro fatal
@@ -21,6 +26,7 @@ register_shutdown_function(function() {
         if (!headers_sent()) {
             header('Content-Type: application/json');
         }
+        ob_clean();
         echo json_encode([
             'leitora_nome'     => 'Erro interno',
             'reader_id'        => null,
@@ -45,6 +51,7 @@ $token = $headers['token'] ?? $headers['Token'] ?? '';
 
 if (!jwtValidate($token)) {
     http_response_code(401);
+    ob_clean();
     echo json_encode(['error' => 'Token inválido']);
     exit;
 }
@@ -53,6 +60,7 @@ $input = $_POST;
 
 if (empty($input['android_id'])) {
     http_response_code(400);
+    ob_clean();
     echo json_encode(['error' => 'android_id é obrigatório']);
     exit;
 }
@@ -65,6 +73,7 @@ $stmt->execute([$input['android_id']]);
 $tap = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$tap || empty($tap['reader_id'])) {
+    ob_clean();
     echo json_encode([
         'leitora_nome'   => 'Não configurada',
         'reader_id'      => null,
@@ -220,6 +229,7 @@ Logger::info("Reader Status Check", [
     'http_status'     => $http_status
 ]);
 
+ob_clean();
 echo json_encode([
     'leitora_nome'     => $reader_nome . ' (' . $pairing_code . ')',
     'reader_id'        => $reader_id,

@@ -5,6 +5,11 @@
  * Versão 2.0 - Com Validação de Assinatura e Proteção contra Duplicatas
  */
 
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 require_once '../includes/config.php';
 require_once '../includes/telegram.php';
 
@@ -38,6 +43,7 @@ if (defined('SUMUP_WEBHOOK_SECRET') && !empty(SUMUP_WEBHOOK_SECRET)) {
         ]);
         
         http_response_code(401);
+        ob_clean();
         echo json_encode(['error' => 'invalid signature']);
         exit;
     }
@@ -76,6 +82,7 @@ if ($json && isset($json->id)) {
             if (!$existing_order) {
                 file_put_contents($log_file, date('Y-m-d H:i:s') . " - Pedido não encontrado: $checkout_id\n", FILE_APPEND);
                 http_response_code(404);
+                ob_clean();
                 echo json_encode(['error' => 'order not found']);
                 exit;
             }
@@ -84,6 +91,7 @@ if ($json && isset($json->id)) {
             if (in_array($existing_order['checkout_status'], ['PAID', 'SUCCESSFUL', 'APPROVED'])) {
                 file_put_contents($log_file, date('Y-m-d H:i:s') . " - Webhook duplicado ignorado: $checkout_id\n", FILE_APPEND);
                 http_response_code(200);
+                ob_clean();
                 echo json_encode(['success' => true, 'message' => 'already processed']);
                 exit;
             }
@@ -160,10 +168,12 @@ if ($json && isset($json->id)) {
             }
             
             http_response_code(200);
+            ob_clean();
             echo json_encode(['success' => true]);
         } else {
             file_put_contents($log_file, date('Y-m-d H:i:s') . " - Checkout ID não encontrado\n", FILE_APPEND);
             http_response_code(400);
+            ob_clean();
             echo json_encode(['error' => 'checkout_id not found']);
         }
     } catch (Exception $e) {
@@ -175,10 +185,12 @@ if ($json && isset($json->id)) {
         ]);
         
         http_response_code(500);
+        ob_clean();
         echo json_encode(['error' => $e->getMessage()]);
     }
 } else {
     file_put_contents($log_file, date('Y-m-d H:i:s') . " - JSON inválido\n", FILE_APPEND);
     http_response_code(400);
+    ob_clean();
     echo json_encode(['error' => 'invalid json']);
 }

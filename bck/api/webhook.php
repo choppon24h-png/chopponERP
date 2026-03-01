@@ -4,6 +4,11 @@
  * Recebe notificações de status de pagamento
  */
 
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 require_once '../includes/config.php';
 
 // Desabilitar output de erros para não interferir na resposta
@@ -51,19 +56,23 @@ if ($json && isset($json->id)) {
             file_put_contents($log_file, date('Y-m-d H:i:s') . " - Order atualizada: $checkout_id -> $status\n", FILE_APPEND);
             
             http_response_code(200);
+            ob_clean();
             echo json_encode(['success' => true]);
         } else {
             file_put_contents($log_file, date('Y-m-d H:i:s') . " - Checkout ID não encontrado\n", FILE_APPEND);
             http_response_code(400);
+            ob_clean();
             echo json_encode(['error' => 'checkout_id not found']);
         }
     } catch (Exception $e) {
         file_put_contents($log_file, date('Y-m-d H:i:s') . " - Erro: " . $e->getMessage() . "\n", FILE_APPEND);
         http_response_code(500);
+        ob_clean();
         echo json_encode(['error' => $e->getMessage()]);
     }
 } else {
     file_put_contents($log_file, date('Y-m-d H:i:s') . " - JSON inválido\n", FILE_APPEND);
     http_response_code(400);
+    ob_clean();
     echo json_encode(['error' => 'invalid json']);
 }

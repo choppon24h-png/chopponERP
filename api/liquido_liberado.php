@@ -5,6 +5,11 @@
  * Atualiza volume consumido da TAP
  */
 
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 header('Content-Type: application/json');
 require_once '../includes/config.php';
 require_once '../includes/jwt.php';
@@ -15,6 +20,7 @@ $token = $headers['token'] ?? $headers['Token'] ?? '';
 // Validar token
 if (!jwtValidate($token)) {
     http_response_code(401);
+    ob_clean();
     echo json_encode(['error' => 'Token inválido']);
     exit;
 }
@@ -26,6 +32,7 @@ $qtd_ml = $input['qtd_ml'] ?? 0;
 
 if (empty($android_id) || $qtd_ml <= 0) {
     http_response_code(400);
+    ob_clean();
     echo json_encode(['error' => 'android_id e qtd_ml são obrigatórios']);
     exit;
 }
@@ -49,8 +56,10 @@ if ($tap) {
     $stmt->execute([$volume_adicional, $tap['id']]);
     
     http_response_code(200);
+    ob_clean();
     echo json_encode([true]);
 } else {
     http_response_code(404);
+    ob_clean();
     echo json_encode(['error' => 'TAP não encontrada']);
 }

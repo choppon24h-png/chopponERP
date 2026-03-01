@@ -11,11 +11,17 @@
  *
  * SEGURANÇA: Remova este arquivo após uso!
  */
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 header('Content-Type: application/json; charset=utf-8');
 
 $key = $_GET['key'] ?? '';
 if ($key !== 'choppon_fix_2026') {
     http_response_code(403);
+    ob_clean();
     echo json_encode(['error' => 'Acesso negado']);
     exit;
 }
@@ -82,6 +88,7 @@ if ($tap_id && $reader_id) {
 
     if (!$valid_reader) {
         http_response_code(400);
+        ob_clean();
         echo json_encode([
             'error'            => 'reader_id inválido ou não encontrado na conta SumUp',
             'reader_id_enviado' => $reader_id,
@@ -96,6 +103,7 @@ if ($tap_id && $reader_id) {
 
     if (!$tap_antes) {
         http_response_code(404);
+        ob_clean();
         echo json_encode(['error' => "TAP {$tap_id} não encontrada"]);
         exit;
     }
@@ -107,6 +115,7 @@ if ($tap_id && $reader_id) {
     $stmt->execute([$tap_id]);
     $tap_depois = $stmt->fetch(PDO::FETCH_ASSOC);
 
+    ob_clean();
     echo json_encode([
         'status'       => 'OK',
         'tap_antes'    => $tap_antes,
@@ -118,6 +127,7 @@ if ($tap_id && $reader_id) {
 }
 
 // Listagem padrão
+ob_clean();
 echo json_encode([
     'instrucoes' => [
         'listar'   => '/api/fix_tap_reader.php?key=choppon_fix_2026',

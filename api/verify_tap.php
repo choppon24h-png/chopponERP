@@ -5,6 +5,11 @@
  * Retorna informações da bebida e TAP para o app Android
  */
 
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 header('Content-Type: application/json');
 require_once '../includes/config.php';
 require_once '../includes/jwt.php';
@@ -15,6 +20,7 @@ $token = $headers['token'] ?? $headers['Token'] ?? '';
 // Validar token
 if (!jwtValidate($token)) {
     http_response_code(401);
+    ob_clean();
     echo json_encode(['error' => 'Token inválido']);
     exit;
 }
@@ -24,6 +30,7 @@ $android_id = $input['android_id'] ?? '';
 
 if (empty($android_id)) {
     http_response_code(400);
+    ob_clean();
     echo json_encode(['error' => 'android_id é obrigatório']);
     exit;
 }
@@ -48,6 +55,7 @@ if ($tap) {
     $stmt->execute([$tap['id']]);
     
     http_response_code(200);
+    ob_clean();
     echo json_encode([
         'image' => $image_url,
         'preco' => $tap['value'],
@@ -57,5 +65,6 @@ if ($tap) {
     ]);
 } else {
     http_response_code(404);
+    ob_clean();
     echo json_encode(['error' => 'TAP não encontrada']);
 }

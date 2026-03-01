@@ -34,6 +34,11 @@
  *   }
  */
 
+
+// ── Buffer de saída: captura TUDO desde o início ─────────────────────────
+// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
+ob_start();
+
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
@@ -46,6 +51,7 @@ $input = json_decode(file_get_contents('php://input'), true);
 // Validar se android_id foi fornecido
 if (!isset($input['android_id']) || empty($input['android_id'])) {
     http_response_code(400);
+    ob_clean();
     echo json_encode([
         'status' => 'error',
         'esp32_mac' => null,
@@ -76,6 +82,7 @@ try {
     if ($result->num_rows === 0) {
         // Tablet não encontrado
         http_response_code(404);
+        ob_clean();
         echo json_encode([
             'status' => 'error',
             'esp32_mac' => null,
@@ -92,6 +99,7 @@ try {
     // Validar se MAC foi configurado
     if (empty($esp32_mac)) {
         http_response_code(200);
+        ob_clean();
         echo json_encode([
             'status' => 'warning',
             'esp32_mac' => null,
@@ -104,6 +112,7 @@ try {
     
     // Sucesso: MAC encontrado
     http_response_code(200);
+    ob_clean();
     echo json_encode([
         'status' => 'success',
         'esp32_mac' => $esp32_mac,
@@ -115,6 +124,7 @@ try {
     
 } catch (Exception $e) {
     http_response_code(500);
+    ob_clean();
     echo json_encode([
         'status' => 'error',
         'esp32_mac' => null,

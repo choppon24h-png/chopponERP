@@ -1,1 +1,0 @@
-[2025-12-04 22:59:52] [INFO] [IP:200.229.247.77] [POST /admin/smtp_config.php] Configuração SMTP salva | Context: {"host":"smtp.titan.email","port":465,"from_email":"choppon24h@gmail.com"}

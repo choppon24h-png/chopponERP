@@ -3,6 +3,14 @@
  * API - Verificar TAP
  * POST /api/verify_tap.php
  * Retorna informações da bebida e TAP para o app Android
+ *
+ * CORREÇÃO v1.1:
+ *   - Adicionado campo `tap_status` na resposta JSON (1=ativa, 0=desativada)
+ *   - O app Android deve verificar tap_status == 0 e redirecionar para
+ *     a tela OFFLINE em vez de voltar para a Home
+ *   - Antes, o campo status não era retornado, então o app não sabia
+ *     que a TAP havia sido desativada e tratava como erro, voltando para Home
+ *   - UPDATE last_call protegido com try/catch (coluna pode não existir no banco)
  */
 
 
@@ -49,19 +57,24 @@ $tap = $stmt->fetch();
 
 if ($tap) {
     $image_url = SITE_URL . '/' . $tap['image'];
-    $stmt = $conn->prepare("
-    UPDATE tap SET last_call = now() WHERE id = ?
-    ");
-    $stmt->execute([$tap['id']]);
-    
+
+    // FIX: Protege o UPDATE com try/catch — coluna last_call pode não existir no banco
+    try {
+        $stmtUpdate = $conn->prepare("UPDATE tap SET last_call = now() WHERE id = ?");
+        $stmtUpdate->execute([$tap['id']]);
+    } catch (Throwable $e) {
+        Logger::debug("verify_tap", "last_call update ignorado: " . $e->getMessage());
+    }
+
     http_response_code(200);
     ob_clean();
     echo json_encode([
-        'image' => $image_url,
-        'preco' => $tap['value'],
-        'bebida' => $tap['bebida_name'],
-        'volume' => $tap['volume_atual'],
-        'cartao' => !empty($tap['reader_id'])
+        'image'      => $image_url,
+        'preco'      => $tap['value'],
+        'bebida'     => $tap['bebida_name'],
+        'volume'     => $tap['volume_atual'],
+        'cartao'     => !empty($tap['reader_id']),
+        'tap_status' => (int) $tap['status'],  // FIX: 1=ativa, 0=desativada (OFFLINE)
     ]);
 } else {
     http_response_code(404);

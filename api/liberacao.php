@@ -2,11 +2,14 @@
 /**
  * API - Controle de Liberação
  * POST /api/liberacao.php?action=iniciada|finalizada
+ *
+ * Campos aceitos em action=finalizada:
+ *   checkout_id   (obrigatório)
+ *   qtd_ml        — volume liberado em ml
+ *   total_pulsos  — total de pulsos QP: reportado pelo ESP32 (auditoria)
  */
 
-
 // ── Buffer de saída: captura TUDO desde o início ─────────────────────────
-// Garante que warnings/notices dos includes não corrompam o JSON de resposta.
 ob_start();
 
 header('Content-Type: application/json');
@@ -24,8 +27,8 @@ if (!jwtValidate($token)) {
     exit;
 }
 
-$action = $_GET['action'] ?? '';
-$input = $_POST;
+$action      = $_GET['action'] ?? '';
+$input       = $_POST;
 $checkout_id = $input['checkout_id'] ?? '';
 
 if (empty($checkout_id)) {
@@ -37,46 +40,69 @@ if (empty($checkout_id)) {
 
 $conn = getDBConnection();
 
+// ── action=iniciada ───────────────────────────────────────────────────────
 if ($action === 'iniciada') {
-    // Marcar liberação como iniciada
     $stmt = $conn->prepare("
-        UPDATE `order` 
+        UPDATE `order`
         SET status_liberacao = 'PROCESSING'
         WHERE checkout_id = ?
     ");
     $stmt->execute([$checkout_id]);
-    
+
     http_response_code(200);
     ob_clean();
     echo json_encode(['success' => true]);
-    
+
+// ── action=finalizada ─────────────────────────────────────────────────────
 } elseif ($action === 'finalizada') {
-    // Marcar liberação como finalizada
-    $qtd_ml = $input['qtd_ml'] ?? 0;
-    
+
+    $qtd_ml       = intval($input['qtd_ml']       ?? 0);
+    $total_pulsos = intval($input['total_pulsos']  ?? 0); // QP: do ESP32
+
     $stmt = $conn->prepare("SELECT * FROM `order` WHERE checkout_id = ? LIMIT 1");
     $stmt->execute([$checkout_id]);
     $order = $stmt->fetch();
-    
+
     if ($order) {
-        $qtd_liberada = $order['qtd_liberada'] + $qtd_ml;
+        $qtd_liberada    = $order['qtd_liberada'] + $qtd_ml;
         $status_liberacao = ($qtd_liberada >= $order['quantidade']) ? 'FINISHED' : 'PROCESSING';
-        
-        $stmt = $conn->prepare("
-            UPDATE `order` 
-            SET qtd_liberada = ?, status_liberacao = ?
-            WHERE id = ?
-        ");
-        $stmt->execute([$qtd_liberada, $status_liberacao, $order['id']]);
-        
+
+        // Verifica se a coluna total_pulsos existe na tabela antes de atualizar
+        // (compatibilidade com bancos que ainda não rodaram a migration)
+        try {
+            $stmt = $conn->prepare("
+                UPDATE `order`
+                SET qtd_liberada     = ?,
+                    status_liberacao = ?,
+                    total_pulsos     = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([$qtd_liberada, $status_liberacao, $total_pulsos, $order['id']]);
+        } catch (\PDOException $e) {
+            // Coluna total_pulsos não existe — atualiza sem ela
+            $stmt = $conn->prepare("
+                UPDATE `order`
+                SET qtd_liberada     = ?,
+                    status_liberacao = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([$qtd_liberada, $status_liberacao, $order['id']]);
+        }
+
         http_response_code(200);
         ob_clean();
-        echo json_encode(['success' => true, 'status' => $status_liberacao]);
+        echo json_encode([
+            'success'       => true,
+            'status'        => $status_liberacao,
+            'qtd_liberada'  => $qtd_liberada,
+            'total_pulsos'  => $total_pulsos,
+        ]);
     } else {
         http_response_code(404);
         ob_clean();
         echo json_encode(['error' => 'Pedido não encontrado']);
     }
+
 } else {
     http_response_code(400);
     ob_clean();

@@ -1,0 +1,25 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ChoppON — Diretório de distribuição do APK
+# Permite download do APK e define MIME type correto para instalação Android.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Define MIME type correto para APK (necessário para instalação via Android)
+AddType application/vnd.android.package-archive .apk
+
+# Permite acesso público a .apk e .json (por padrão o Apache pode bloquear)
+<Files "*.apk">
+    Order allow,deny
+    Allow from all
+</Files>
+
+<Files "version.json">
+    Order allow,deny
+    Allow from all
+    # Desabilita cache para que o app sempre leia a versão mais recente
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+</Files>
+
+# Desabilita listagem de diretório por segurança
+Options -Indexes

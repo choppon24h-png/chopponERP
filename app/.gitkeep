@@ -1,0 +1,4 @@
+# Este arquivo garante que o diretório app/ seja rastreado pelo Git.
+# O arquivo app-release.apk deve ser enviado via FTP diretamente para o servidor
+# e NÃO deve ser commitado no repositório (arquivo binário grande).
+# Adicione app-release.apk ao .gitignore se necessário.

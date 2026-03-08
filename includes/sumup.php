@@ -2,7 +2,7 @@
 /**
  * Integração com SumUp — ChoppOnTap
  *
- * v3.0.0 — Correção completa do fluxo PIX
+ * v3.1.0 — Melhorias no fluxo PIX
  *   PROBLEMA IDENTIFICADO:
  *     O método setPaymentTypePix() fazia um PUT /v0.1/checkouts/{id} com
  *     { "payment_type": "pix" }, que é o endpoint de PROCESSAR checkout (cobrar
@@ -303,28 +303,53 @@ class SumUpIntegration {
      * @return array|false  ['pix_code', 'barcode_url', 'qr_code_base64']
      */
     private function processCheckoutPix($checkout_id) {
-        $url  = $this->checkout_url . $checkout_id;
-        $body = ['payment_type' => 'pix'];
+        $url = $this->checkout_url . $checkout_id;
 
-        Logger::info('SumUp PIX - Passo 2: processando checkout com payment_type=pix', [
-            'checkout_id' => $checkout_id,
-            'url'         => $url,
-        ]);
+        // ── Tenta payment_type=pix primeiro, depois qr_code_pix como fallback ──
+        // Diferença (doc oficial SumUp):
+        //   pix         → pago direto na conta bancária SumUp do merchant (sem taxa)
+        //   qr_code_pix → pago via processo normal de repasse (com taxa)
+        // Contas sem PIX direto habilitado retornam 4xx para payment_type=pix;
+        // nesse caso tentamos qr_code_pix automaticamente.
+        $payment_types_to_try = ['pix', 'qr_code_pix'];
+        $response             = null;
+        $used_payment_type    = null;
 
-        $response = $this->makeRequest($url, 'PUT', $body);
+        foreach ($payment_types_to_try as $pt) {
+            $body = ['payment_type' => $pt];
 
-        Logger::info('SumUp PIX - Resposta Passo 2 (processar PIX)', [
-            'http_status'  => $response['status'],
-            'has_pix'      => isset($response['data']->pix) ? 'sim' : 'não',
-            'raw_response' => substr($response['raw_response'] ?? '', 0, 500),
-            'curl_error'   => $response['curl_error'] ?: 'nenhum',
-        ]);
+            Logger::info('SumUp PIX - Passo 2: tentando payment_type=' . $pt, [
+                'checkout_id' => $checkout_id,
+                'url'         => $url,
+            ]);
 
-        if ($response['status'] !== 200 || !isset($response['data'])) {
-            Logger::error('SumUp PIX - Resposta inválida no Passo 2', [
+            $response = $this->makeRequest($url, 'PUT', $body);
+
+            Logger::info('SumUp PIX - Resposta Passo 2 (payment_type=' . $pt . ')', [
                 'http_status'  => $response['status'],
-                'raw_response' => $response['raw_response'],
-                'curl_error'   => $response['curl_error'],
+                'has_pix'      => isset($response['data']->pix)         ? 'sim' : 'não',
+                'has_qr_pix'   => isset($response['data']->qr_code_pix) ? 'sim' : 'não',
+                'raw_response' => substr($response['raw_response'] ?? '', 0, 500),
+                'curl_error'   => $response['curl_error'] ?: 'nenhum',
+            ]);
+
+            if ($response['status'] === 200 && isset($response['data'])) {
+                $used_payment_type = $pt;
+                break; // Sucesso — para de tentar
+            }
+
+            Logger::warning('SumUp PIX - payment_type=' . $pt . ' falhou, tentando próximo', [
+                'http_status'  => $response['status'],
+                'raw_response' => substr($response['raw_response'] ?? '', 0, 300),
+            ]);
+        }
+
+        if (!$used_payment_type || !isset($response['data'])) {
+            Logger::error('SumUp PIX - Todos os payment_types falharam no Passo 2', [
+                'checkout_id'  => $checkout_id,
+                'http_status'  => $response['status'] ?? 0,
+                'raw_response' => $response['raw_response'] ?? '',
+                'curl_error'   => $response['curl_error'] ?? '',
             ]);
             return false;
         }
@@ -332,15 +357,15 @@ class SumUpIntegration {
         $data = $response['data'];
 
         // ── Extrair artefatos do PIX ──────────────────────────────────────────
-        // A SumUp pode retornar tanto "pix" quanto "qr_code_pix" dependendo da
-        // configuração da conta do merchant.
+        // A SumUp retorna o objeto sob a chave correspondente ao payment_type usado.
         $pix_obj = $data->pix ?? $data->qr_code_pix ?? null;
 
         if (!$pix_obj || !isset($pix_obj->artefacts)) {
             Logger::error('SumUp PIX - Objeto pix/qr_code_pix não encontrado na resposta', [
-                'checkout_id'  => $checkout_id,
+                'checkout_id'   => $checkout_id,
+                'payment_type'  => $used_payment_type,
                 'response_keys' => array_keys((array) $data),
-                'raw_response' => substr($response['raw_response'] ?? '', 0, 1000),
+                'raw_response'  => substr($response['raw_response'] ?? '', 0, 1000),
             ]);
             return false;
         }
@@ -353,9 +378,23 @@ class SumUpIntegration {
 
             if ($name === 'code') {
                 // Código EMV (copia e cola do PIX)
+                // O campo 'content' pode estar vazio; nesse caso usa 'location' para buscar
                 $pix_code = $artefact->content ?? null;
+
+                if (empty($pix_code) && !empty($artefact->location)) {
+                    // Alguns merchants recebem o EMV via URL em vez de inline
+                    Logger::info('SumUp PIX - content vazio, buscando EMV via location URL', [
+                        'location' => $artefact->location,
+                    ]);
+                    $emv_raw = $this->downloadImage($artefact->location);
+                    if (!empty($emv_raw)) {
+                        $pix_code = trim((string) $emv_raw);
+                    }
+                }
+
                 Logger::info('SumUp PIX - Código EMV encontrado', [
                     'pix_code_len' => strlen($pix_code ?? ''),
+                    'source'       => !empty($artefact->content) ? 'inline' : 'location_url',
                 ]);
             }
 
@@ -370,8 +409,9 @@ class SumUpIntegration {
 
         if (!$pix_code && !$barcode_url) {
             Logger::error('SumUp PIX - Nenhum artefato útil encontrado', [
-                'checkout_id' => $checkout_id,
-                'artefacts'   => json_encode($pix_obj->artefacts),
+                'checkout_id'  => $checkout_id,
+                'payment_type' => $used_payment_type,
+                'artefacts'    => json_encode($pix_obj->artefacts),
             ]);
             return false;
         }

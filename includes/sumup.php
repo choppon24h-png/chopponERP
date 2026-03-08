@@ -2,7 +2,7 @@
 /**
  * Integração com SumUp — ChoppOnTap
  *
- * v3.1.0 — Melhorias no fluxo PIX
+ * v3.2.0 — Correção do CHECKOUT_EXPIRED (valid_until)
  *   PROBLEMA IDENTIFICADO:
  *     O método setPaymentTypePix() fazia um PUT /v0.1/checkouts/{id} com
  *     { "payment_type": "pix" }, que é o endpoint de PROCESSAR checkout (cobrar
@@ -218,7 +218,16 @@ class SumUpIntegration {
      *                      ou false em caso de falha
      */
     public function createCheckoutPix($order_data) {
-        // ── Passo 1: Criar o checkout ─────────────────────────────────────────
+        // ── Passo 1: Criar o checkout ────────────────────────────────────────────────────
+        // IMPORTANTE: valid_until e date DEVEM usar UTC (gmdate).
+        // O servidor está configurado com America/Sao_Paulo (UTC-3), portanto
+        // date() retorna horário local. Se valid_until for enviado com horário
+        // local + sufixo '+00:00', a SumUp interpreta como UTC e vê a data
+        // como 3 horas no passado → CHECKOUT_EXPIRED imediatamente.
+        // Solução: usar gmdate() para ambos os campos (sempre UTC real).
+        $now_utc        = gmdate('Y-m-d\TH:i:s') . 'Z'; // formato ISO 8601 UTC com Z
+        $valid_until_utc = gmdate('Y-m-d\TH:i:s', time() + 1800) . 'Z'; // +30 min em UTC
+
         $body = [
             'checkout_reference' => 'CO' . $order_data['id'],
             'amount'             => floatval($order_data['valor']),
@@ -226,8 +235,8 @@ class SumUpIntegration {
             'merchant_code'      => $this->merchant_code,
             'description'        => $order_data['descricao'],
             'return_url'         => SITE_URL . '/api/webhook.php',
-            'date'               => gmdate('Y-m-d\TH:i:s') . '+00:00',
-            'valid_until'        => date('Y-m-d\TH:i:s', strtotime('+3 minutes')) . '+00:00',
+            'date'               => $now_utc,
+            'valid_until'        => $valid_until_utc,
         ];
 
         Logger::info('SumUp PIX - Passo 1: criando checkout', [

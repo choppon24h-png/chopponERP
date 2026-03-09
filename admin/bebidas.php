@@ -281,13 +281,13 @@ require_once '../includes/header.php';
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="value">Valor (R$) *</label>
-                            <input type="number" name="value" id="value" class="form-control" step="0.01" min="0" required placeholder="Ex: 25.50">
+                            <input type="text" name="value" id="value" class="form-control money-input" required placeholder="Ex: 25,50" autocomplete="off">
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="promotional_value">Valor Promocional (R$) *</label>
-                            <input type="number" name="promotional_value" id="promotional_value" class="form-control" step="0.01" min="0" required placeholder="Ex: 20.00">
+                            <input type="text" name="promotional_value" id="promotional_value" class="form-control money-input" required placeholder="Ex: 20,00" autocomplete="off">
                         </div>
                     </div>
                 </div>
@@ -309,6 +309,12 @@ require_once '../includes/header.php';
 <?php
 $extra_js = <<<'JS'
 <script>
+function formatMoneyBR(value) {
+    var num = parseFloat(value);
+    if (isNaN(num)) return '0,00';
+    return num.toFixed(2).replace('.', ',');
+}
+
 function editBebida(bebida) {
     document.getElementById('modalTitle').textContent = 'Editar Bebida';
     document.getElementById('formAction').value = 'update';
@@ -319,12 +325,20 @@ function editBebida(bebida) {
     document.getElementById('alcool').value = bebida.alcool;
     document.getElementById('brand').value = bebida.brand;
     document.getElementById('type').value = bebida.type;
-    document.getElementById('value').value = bebida.value;
-    document.getElementById('promotional_value').value = bebida.promotional_value;
+    document.getElementById('value').value = formatMoneyBR(bebida.value);
+    document.getElementById('promotional_value').value = formatMoneyBR(bebida.promotional_value);
+    
+    // Selecionar estabelecimento automaticamente ao editar
+    var selectEstab = document.getElementById('estabelecimento_id');
+    if (selectEstab) {
+        selectEstab.value = bebida.estabelecimento_id;
+    }
     
     if (bebida.image) {
         document.getElementById('imagePreview').src = '<?php echo SITE_URL; ?>/' + bebida.image;
         document.getElementById('imagePreview').style.display = 'block';
+    } else {
+        document.getElementById('imagePreview').style.display = 'none';
     }
     
     openModal('modalBebida');
@@ -348,6 +362,46 @@ document.querySelector('[onclick="openModal(\'modalBebida\')"]').addEventListene
     document.getElementById('formAction').value = 'create';
     document.getElementById('formBebida').reset();
     document.getElementById('imagePreview').style.display = 'none';
+});
+
+// Máscara de moeda brasileira para campos de valor
+document.querySelectorAll('.money-input').forEach(function(input) {
+    input.addEventListener('input', function(e) {
+        var value = e.target.value;
+        // Remover tudo que não for dígito, vírgula ou ponto
+        value = value.replace(/[^0-9.,]/g, '');
+        // Permitir apenas uma vírgula ou ponto
+        var parts = value.split(/[,.]/);
+        if (parts.length > 2) {
+            value = parts[0] + ',' + parts.slice(1).join('');
+        }
+        e.target.value = value;
+    });
+    
+    // Ao sair do campo, normalizar o formato
+    input.addEventListener('blur', function(e) {
+        var value = e.target.value.trim();
+        if (value === '') return;
+        // Substituir ponto por vírgula para exibição
+        value = value.replace('.', ',');
+        // Verificar se tem casas decimais
+        var parts = value.split(',');
+        if (parts.length === 1) {
+            // Sem decimal, adicionar ,00
+            e.target.value = parts[0] + ',00';
+        } else {
+            // Garantir 2 casas decimais
+            e.target.value = parts[0] + ',' + (parts[1] + '00').substring(0, 2);
+        }
+    });
+});
+
+// Converter vírgula para ponto antes de enviar o formulário
+document.getElementById('formBebida').addEventListener('submit', function(e) {
+    document.querySelectorAll('.money-input').forEach(function(input) {
+        // Converter formato BR (vírgula) para float (ponto) antes do envio
+        input.value = input.value.replace(/\./g, '').replace(',', '.');
+    });
 });
 </script>
 JS;

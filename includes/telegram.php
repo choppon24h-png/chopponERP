@@ -8,11 +8,8 @@
 
 class TelegramBot {
     private $conn;
-    private $logger;
-    
     public function __construct($conn = null) {
         $this->conn = $conn ?? getDBConnection();
-        $this->logger = Logger::getInstance();
     }
     
     /**
@@ -30,13 +27,13 @@ class TelegramBot {
             $config = $this->getConfig($estabelecimento_id);
             
             if (!$config || !$config['status']) {
-                $this->logger->log('telegram', "Telegram não configurado ou desativado para estabelecimento $estabelecimento_id");
+                Logger::info("Telegram não configurado ou desativado para estabelecimento $estabelecimento_id");
                 return false;
             }
             
             // Verificar se o tipo de notificação está habilitado
             if (!$this->isNotificationEnabled($config, $type)) {
-                $this->logger->log('telegram', "Notificação tipo '$type' desativada para estabelecimento $estabelecimento_id");
+                Logger::info("Notificação tipo '$type' desativada para estabelecimento $estabelecimento_id");
                 return false;
             }
             
@@ -70,18 +67,18 @@ class TelegramBot {
                 // Registrar alerta enviado
                 $this->logAlert($estabelecimento_id, $type, $reference_id, $message, 'sent', $response);
                 
-                $this->logger->log('telegram', "Mensagem enviada com sucesso para estabelecimento $estabelecimento_id");
+                Logger::info("Telegram: mensagem enviada com sucesso para estabelecimento $estabelecimento_id");
                 return true;
             } else {
                 // Registrar falha
                 $this->logAlert($estabelecimento_id, $type, $reference_id, $message, 'failed', $response);
                 
-                $this->logger->log('telegram', "Erro ao enviar mensagem: HTTP $http_code - $response", 'ERROR');
+                Logger::error("Telegram: erro ao enviar mensagem: HTTP $http_code", ['response' => $response]);
                 return false;
             }
             
         } catch (Exception $e) {
-            $this->logger->log('telegram', "Exceção ao enviar mensagem: " . $e->getMessage(), 'ERROR');
+            Logger::error('Telegram: exceção ao enviar mensagem: ' . $e->getMessage());
             return false;
         }
     }
@@ -128,7 +125,7 @@ class TelegramBot {
             ");
             $stmt->execute([$estabelecimento_id, $type, $reference_id, $message, $status, $response]);
         } catch (Exception $e) {
-            $this->logger->log('telegram', "Erro ao registrar alerta: " . $e->getMessage(), 'ERROR');
+            Logger::error('Telegram: erro ao registrar alerta: ' . $e->getMessage());
         }
     }
     

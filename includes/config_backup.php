@@ -165,9 +165,13 @@ function formatDateTimeBR($datetime) {
 }
 
 // Função para converter número BR para float
+// CORREÇÃO: Trata corretamente ponto de milhar (BR) vs ponto decimal (float).
 function numberToFloat($number) {
-    $number = str_replace('.', '', $number);
-    $number = str_replace(',', '.', $number);
+    $number = trim((string)$number);
+    if (strpos($number, ',') !== false) {
+        $number = str_replace('.', '', $number);
+        $number = str_replace(',', '.', $number);
+    }
     return floatval($number);
 }
 

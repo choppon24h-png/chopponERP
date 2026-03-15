@@ -167,9 +167,18 @@ function formatDateTimeBR($datetime) {
 }
 
 // Função para converter número BR para float
+// CORREÇÃO: Trata corretamente ponto de milhar (BR) vs ponto decimal (float).
+// Se o valor tem vírgula → formato BR (ex: "1.234,56" ou "0,10") → remove pontos de milhar, troca vírgula por ponto.
+// Se o valor NÃO tem vírgula mas tem ponto → já é float (ex: "0.10", "25.50") → não remover o ponto.
 function numberToFloat($number) {
-    $number = str_replace('.', '', $number);
-    $number = str_replace(',', '.', $number);
+    $number = trim((string)$number);
+    if (strpos($number, ',') !== false) {
+        // Formato BR: remove pontos de milhar e converte vírgula decimal para ponto
+        $number = str_replace('.', '', $number);
+        $number = str_replace(',', '.', $number);
+    }
+    // Se não tem vírgula, pode ser float com ponto (ex: "0.10") ou inteiro (ex: "100")
+    // Não remover o ponto neste caso
     return floatval($number);
 }
 

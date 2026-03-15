@@ -56,6 +56,43 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ========================================
+// Utilitários de Valor Monetário (BR)
+// ========================================
+
+/**
+ * Converte um valor no formato BR (vírgula como decimal, ponto como milhar)
+ * para float com ponto decimal. Seguro para uso antes de envio ao servidor.
+ *
+ * Exemplos:
+ *   parseBRToFloat('0,10')      → '0.10'
+ *   parseBRToFloat('1.234,56') → '1234.56'
+ *   parseBRToFloat('10.00')    → '10.00'  (já está em formato float)
+ *   parseBRToFloat('100')      → '100.00'
+ */
+function parseBRToFloat(value) {
+    if (!value || String(value).trim() === '') return '0.00';
+    var v = String(value).trim();
+    if (v.indexOf(',') !== -1) {
+        // Formato BR: remove pontos de milhar e troca vírgula decimal por ponto
+        v = v.replace(/\./g, '').replace(',', '.');
+    }
+    // Se não tem vírgula, pode já estar no formato float (ex: '10.50') ou ser inteiro
+    var num = parseFloat(v);
+    if (isNaN(num)) return '0.00';
+    return num.toFixed(2);
+}
+
+/**
+ * Formata um número float para o padrão monetário brasileiro.
+ * Ex: 10.5 → '10,50' | 0.1 → '0,10'
+ */
+function formatMoneyBR(value) {
+    var num = parseFloat(value);
+    if (isNaN(num)) return '0,00';
+    return num.toFixed(2).replace('.', ',');
+}
+
+// ========================================
 // Formatação de Moeda
 // ========================================
 function formatCurrency(input) {

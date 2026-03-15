@@ -309,10 +309,38 @@ require_once '../includes/header.php';
 <?php
 $extra_js = <<<'JS'
 <script>
+/**
+ * Converte um valor numérico (float/string com ponto) para o formato BR (vírgula).
+ * Ex: 10.5 → "10,50" | 0.1 → "0,10"
+ */
 function formatMoneyBR(value) {
+    // Garantir que é número válido
     var num = parseFloat(value);
     if (isNaN(num)) return '0,00';
+    // toFixed(2) garante 2 casas decimais com ponto, depois troca por vírgula
     return num.toFixed(2).replace('.', ',');
+}
+
+/**
+ * Converte um valor no formato BR (vírgula como decimal, ponto como milhar)
+ * para float com ponto decimal.
+ * Ex: "1.234,56" → "1234.56" | "0,10" → "0.10" | "10,00" → "10.00"
+ */
+function parseBRToFloat(value) {
+    if (!value || value.trim() === '') return '0.00';
+    var v = value.trim();
+    // Remove pontos de milhar (ponto seguido de 3 dígitos)
+    // e substitui vírgula decimal por ponto
+    // Estratégia: se há vírgula, ela é o separador decimal
+    if (v.indexOf(',') !== -1) {
+        // Remove todos os pontos (separadores de milhar) e troca vírgula por ponto
+        v = v.replace(/\./g, '').replace(',', '.');
+    }
+    // Se não há vírgula, pode ser que já esteja com ponto decimal (ex: "10.50")
+    // Nesse caso não fazemos nada (já está no formato correto)
+    var num = parseFloat(v);
+    if (isNaN(num)) return '0.00';
+    return num.toFixed(2);
 }
 
 function editBebida(bebida) {
@@ -325,6 +353,7 @@ function editBebida(bebida) {
     document.getElementById('alcool').value = bebida.alcool;
     document.getElementById('brand').value = bebida.brand;
     document.getElementById('type').value = bebida.type;
+    // Preencher campos de valor já no formato BR (vírgula) para exibição
     document.getElementById('value').value = formatMoneyBR(bebida.value);
     document.getElementById('promotional_value').value = formatMoneyBR(bebida.promotional_value);
     
@@ -370,37 +399,32 @@ document.querySelectorAll('.money-input').forEach(function(input) {
         var value = e.target.value;
         // Remover tudo que não for dígito, vírgula ou ponto
         value = value.replace(/[^0-9.,]/g, '');
-        // Permitir apenas uma vírgula ou ponto
+        // Permitir apenas um separador decimal (vírgula ou ponto)
         var parts = value.split(/[,.]/);
         if (parts.length > 2) {
+            // Manter apenas o primeiro separador
             value = parts[0] + ',' + parts.slice(1).join('');
         }
         e.target.value = value;
     });
     
-    // Ao sair do campo, normalizar o formato
+    // Ao sair do campo, normalizar o formato para exibição (sempre vírgula decimal)
     input.addEventListener('blur', function(e) {
         var value = e.target.value.trim();
         if (value === '') return;
-        // Substituir ponto por vírgula para exibição
-        value = value.replace('.', ',');
-        // Verificar se tem casas decimais
-        var parts = value.split(',');
-        if (parts.length === 1) {
-            // Sem decimal, adicionar ,00
-            e.target.value = parts[0] + ',00';
-        } else {
-            // Garantir 2 casas decimais
-            e.target.value = parts[0] + ',' + (parts[1] + '00').substring(0, 2);
-        }
+        // Usar parseBRToFloat para obter o float correto, depois formatar de volta para BR
+        var floatVal = parseBRToFloat(value);
+        e.target.value = formatMoneyBR(floatVal);
     });
 });
 
-// Converter vírgula para ponto antes de enviar o formulário
+// Converter formato BR para float (ponto decimal) ANTES de enviar o formulário
+// IMPORTANTE: este handler roda uma única vez no submit e converte os valores
+// corretamente sem risco de dupla conversão.
 document.getElementById('formBebida').addEventListener('submit', function(e) {
     document.querySelectorAll('.money-input').forEach(function(input) {
-        // Converter formato BR (vírgula) para float (ponto) antes do envio
-        input.value = input.value.replace(/\./g, '').replace(',', '.');
+        // Converter o valor exibido (BR com vírgula) para float com ponto
+        input.value = parseBRToFloat(input.value);
     });
 });
 </script>

@@ -596,9 +596,8 @@ function calcularRoyalties() {
     
     if (!valorInput || !valorDisplay) return;
     
-    // Remover formatação e converter para número
-    let valor = valorInput.value.replace(/[R$\s.]/g, '').replace(',', '.');
-    valor = parseFloat(valor) || 0;
+    // Remover formatação e converter para número (usando parseBRToFloat para evitar bug de separador)
+    let valor = parseFloat(parseBRToFloat(valorInput.value.replace(/[R$\s]/g, ''))) || 0;
     
     // Calcular 7%
     const royalties = valor * 0.07;

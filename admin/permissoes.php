@@ -145,44 +145,19 @@ require_once '../includes/header.php';
                                 <i class="fas fa-qrcode"></i>
                                 <span>Acesso Master via QR Code</span>
                             </div>
-                            <div id="qrStatusBadge"></div>
                         </div>
-
                         <p class="qr-master-desc">
-                            Gere um QR Code seguro para que este usuário acesse o modo técnico
-                            (ServiceTools) no tablet Android sem digitar senha. O código expira em
-                            <strong>24 horas</strong> e pode ser revogado a qualquer momento.
+                            Clique em <strong>Habilitar</strong> para escanear o QR Code exibido
+                            no tablet Android (tela de Acesso Master). O sistema validará o código
+                            e liberará o acesso ao ServiceTools automaticamente.
                         </p>
-
                         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
-                            <button class="btn-qr-gerar" id="btnGerarQr" onclick="gerarQrMaster()">
-                                <i class="fas fa-qrcode"></i> Gerar QR Code
-                            </button>
-                            <button class="btn-qr-revogar" id="btnRevogarQr" onclick="revogarQrMaster()" style="display:none;">
-                                <i class="fas fa-ban"></i> Revogar Acesso
+                            <button class="btn-qr-gerar" id="btnHabilitarQr" onclick="abrirScannerQr()">
+                                <i class="fas fa-camera"></i> Habilitar (Escanear QR Code do Tablet)
                             </button>
                         </div>
-
-                        <!-- Área do QR Code gerado -->
-                        <div id="qrCodeArea" style="display:none;" class="qr-code-area">
-                            <div class="qr-code-container">
-                                <img id="qrCodeImg" src="" alt="QR Code Master" />
-                            </div>
-                            <div class="qr-code-info">
-                                <div class="qr-info-row">
-                                    <i class="fas fa-clock"></i>
-                                    <span>Expira em: <strong id="qrExpiresAt"></strong></span>
-                                </div>
-                                <div class="qr-info-row">
-                                    <i class="fas fa-shield-alt"></i>
-                                    <span>Token único de 64 caracteres — válido por 24 horas</span>
-                                </div>
-                                <div class="qr-info-row">
-                                    <i class="fas fa-mobile-alt"></i>
-                                    <span>Aponte a câmera do tablet para este QR Code na tela de Acesso Master</span>
-                                </div>
-                            </div>
-                        </div>
+                        <!-- Resultado da aprovação -->
+                        <div id="qrResultArea" style="display:none;" class="qr-result-area"></div>
                     </div>
                     <!-- ── Fim Seção QR Code Master ──────────────────── -->
 
@@ -410,6 +385,99 @@ require_once '../includes/header.php';
     .qr-code-area { flex-direction: column; align-items: center; }
     .qr-code-container img { width: 180px; height: 180px; }
 }
+/* ── Scanner QR Code Modal ──────────────────────────────────────────────── */
+.qr-scanner-box {
+    background: white;
+    border-radius: 16px;
+    padding: 28px;
+    max-width: 520px;
+    width: 92%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.qr-scanner-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #f0f0f0;
+}
+.qr-scanner-header h4 {
+    margin: 0;
+    font-size: 17px;
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.btn-fechar-scanner {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #999;
+    line-height: 1;
+    padding: 0 4px;
+    transition: color 0.2s;
+}
+.btn-fechar-scanner:hover { color: #dc3545; }
+.qr-video-wrapper {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #000;
+    min-height: 280px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.qr-scanner-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+.qr-scanner-frame {
+    width: 200px;
+    height: 200px;
+    border: 3px solid #E87722;
+    border-radius: 12px;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
+    animation: scanPulse 1.5s ease-in-out infinite;
+}
+@keyframes scanPulse {
+    0%, 100% { border-color: #E87722; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35), 0 0 0 0 rgba(232,119,34,0.4); }
+    50%       { border-color: #ff9a3c; box-shadow: 0 0 0 9999px rgba(0,0,0,0.35), 0 0 8px 4px rgba(232,119,34,0.6); }
+}
+/* ── Resultado da aprovacao ─────────────────────────────────────────────── */
+.qr-result-area {
+    margin-top: 12px;
+    border-radius: 8px;
+    overflow: hidden;
+    animation: fadeInQr 0.3s ease;
+}
+.qr-result-success, .qr-result-error {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+}
+.qr-result-success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+.qr-result-success i { font-size: 22px; color: #28a745; flex-shrink: 0; }
+.qr-result-error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+.qr-result-error i { font-size: 22px; color: #dc3545; flex-shrink: 0; }
 </style>
 
 <!-- Modal de confirmação de revogação -->
@@ -440,9 +508,7 @@ document.querySelectorAll('.user-item').forEach(item => {
         this.classList.add('active');
         currentUserId   = this.dataset.userId;
         currentUserName = this.dataset.userName;
-        qrAtivoAtual    = this.dataset.qrAtivo === '1';
         loadUserPermissions(currentUserId, currentUserName, this.dataset.userType);
-        atualizarPainelQr(qrAtivoAtual);
     });
 });
 
@@ -457,103 +523,169 @@ function loadUserPermissions(userId, userName, userType) {
             renderPermissions(permissions);
             document.getElementById('noSelectionMessage').style.display = 'none';
             document.getElementById('permissionsPanel').style.display  = 'block';
-            document.getElementById('qrCodeArea').style.display = 'none';
         })
         .catch(err => { console.error(err); alert('Erro ao carregar permissões do usuário'); });
 }
 
 // ── Painel QR ─────────────────────────────────────────────────────────────
-function atualizarPainelQr(ativo) {
-    const badge      = document.getElementById('qrStatusBadge');
-    const btnRevogar = document.getElementById('btnRevogarQr');
-    const btnGerar   = document.getElementById('btnGerarQr');
-    if (ativo) {
-        badge.innerHTML = '<span class="status-badge status-ativo"><i class="fas fa-check-circle"></i> QR Code Ativo</span>';
-        btnRevogar.style.display = 'inline-flex';
-        btnGerar.innerHTML = '<i class="fas fa-sync-alt"></i> Regenerar QR Code';
-    } else {
-        badge.innerHTML = '<span class="status-badge status-inativo"><i class="fas fa-times-circle"></i> Sem QR Code Ativo</span>';
-        btnRevogar.style.display = 'none';
-        btnGerar.innerHTML = '<i class="fas fa-qrcode"></i> Gerar QR Code';
+// ── Scanner QR Code (câmera do PC lê o QR do tablet) ──────────────────────────
+let scannerStream   = null;
+let scannerInterval = null;
+let scannerAtivo    = false;
+
+function abrirScannerQr() {
+    if (!currentUserId) {
+        alert('Selecione um usuário antes de habilitar.');
+        return;
     }
-    document.getElementById('qrCodeArea').style.display = 'none';
+    // Remover modal anterior se existir
+    const existing = document.getElementById('modalScanner');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'modalScanner';
+    modal.innerHTML = `
+        <div class="qr-scanner-box">
+            <div class="qr-scanner-header">
+                <h4><i class="fas fa-camera"></i> Escanear QR Code do Tablet</h4>
+                <button onclick="fecharScanner()" class="btn-fechar-scanner">&times;</button>
+            </div>
+            <p style="color:#666;font-size:13px;margin-bottom:12px;">
+                Aponte a câmera deste computador para o QR Code exibido na tela do tablet Android.
+            </p>
+            <div class="qr-video-wrapper">
+                <video id="qrVideo" autoplay playsinline muted style="width:100%;border-radius:8px;"></video>
+                <canvas id="qrCanvas" style="display:none;"></canvas>
+                <div class="qr-scanner-overlay"><div class="qr-scanner-frame"></div></div>
+            </div>
+            <div id="scannerStatus" style="margin-top:12px;text-align:center;color:#E87722;font-weight:600;">
+                Iniciando câmera...
+            </div>
+        </div>
+    `;
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.addEventListener('click', e => { if (e.target === modal) fecharScanner(); });
+    document.body.appendChild(modal);
+
+    // Carregar jsQR dinamicamente se ainda não carregado
+    if (typeof jsQR === 'undefined') {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
+        script.onload = () => iniciarCamera();
+        script.onerror = () => {
+            const el = document.getElementById('scannerStatus');
+            if (el) el.textContent = 'Erro ao carregar biblioteca de scanner.';
+        };
+        document.head.appendChild(script);
+    } else {
+        iniciarCamera();
+    }
 }
 
-// ── Gerar QR Code Master ──────────────────────────────────────────────────
-function gerarQrMaster() {
-    if (!currentUserId) return;
-    const btn = document.getElementById('btnGerarQr');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando...';
-    const fd = new FormData();
-    fd.append('user_id', currentUserId);
-    fetch('ajax/gerar_master_qr.php', { method: 'POST', body: fd })
-        .then(r => r.json())
-        .then(data => {
-            btn.disabled = false;
-            if (data.success) {
-                const img = document.getElementById('qrCodeImg');
-                img.src = data.qr_url;
-                img.onload = () => { document.getElementById('qrCodeArea').style.display = 'flex'; };
-                const exp = new Date(data.expires_at.replace(' ', 'T'));
-                document.getElementById('qrExpiresAt').textContent =
-                    exp.toLocaleDateString('pt-BR') + ' às ' +
-                    exp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                qrAtivoAtual = true;
-                atualizarPainelQr(true);
-                document.getElementById('qrCodeArea').style.display = 'flex';
-                const userItem = document.querySelector(`.user-item[data-user-id="${currentUserId}"]`);
-                if (userItem) {
-                    userItem.dataset.qrAtivo = '1';
-                    if (!userItem.querySelector('.badge-qr-ativo')) {
-                        const b = document.createElement('span');
-                        b.className = 'badge badge-qr-ativo';
-                        b.title = 'QR Code master ativo';
-                        b.innerHTML = '<i class="fas fa-qrcode"></i> QR';
-                        userItem.querySelector('[style*="display:flex"]')?.prepend(b);
-                    }
-                }
-                btn.innerHTML = '<i class="fas fa-sync-alt"></i> Regenerar QR Code';
-            } else {
-                alert('Erro: ' + (data.error || 'Falha ao gerar QR Code'));
-                btn.innerHTML = '<i class="fas fa-qrcode"></i> Gerar QR Code';
-            }
+function iniciarCamera() {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: 640, height: 480 } })
+        .then(stream => {
+            scannerStream = stream;
+            scannerAtivo  = true;
+            const video = document.getElementById('qrVideo');
+            video.srcObject = stream;
+            video.play();
+            const el = document.getElementById('scannerStatus');
+            if (el) el.textContent = 'Câmera ativa. Aponte para o QR Code do tablet...';
+            iniciarLeitura();
         })
         .catch(err => {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-qrcode"></i> Gerar QR Code';
-            console.error(err); alert('Erro de conexão ao gerar QR Code');
+            console.error('Camera error:', err);
+            const el = document.getElementById('scannerStatus');
+            if (el) el.textContent = 'Erro ao acessar câmera: ' + err.message + '. Verifique as permissões do navegador.';
         });
 }
 
-// ── Revogar ───────────────────────────────────────────────────────────────
-function revogarQrMaster() {
-    document.getElementById('modalUserName').textContent = currentUserName;
-    document.getElementById('modalRevogar').style.display = 'flex';
+function iniciarLeitura() {
+    const video  = document.getElementById('qrVideo');
+    const canvas = document.getElementById('qrCanvas');
+    const ctx    = canvas.getContext('2d');
+
+    scannerInterval = setInterval(() => {
+        if (!scannerAtivo || !video || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+        canvas.width  = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+
+        if (code && code.data) {
+            // Verificar formato CHOPPON_MASTER:<64 hex>
+            if (/^CHOPPON_MASTER:[0-9a-f]{64}$/.test(code.data)) {
+                scannerAtivo = false;
+                clearInterval(scannerInterval);
+                const el = document.getElementById('scannerStatus');
+                if (el) el.innerHTML = '<i class="fas fa-check-circle" style="color:#28a745"></i> QR Code lido! Validando...';
+                aprovarQrCode(code.data);
+            } else {
+                const el = document.getElementById('scannerStatus');
+                if (el) el.textContent = 'QR Code inválido. Aponte para o QR Code do tablet.';
+            }
+        }
+    }, 200);
 }
-function fecharModal() { document.getElementById('modalRevogar').style.display = 'none'; }
-function confirmarRevogacao() {
-    fecharModal();
+
+function fecharScanner() {
+    scannerAtivo = false;
+    clearInterval(scannerInterval);
+    if (scannerStream) {
+        scannerStream.getTracks().forEach(t => t.stop());
+        scannerStream = null;
+    }
+    const modal = document.getElementById('modalScanner');
+    if (modal) modal.remove();
+}
+
+function aprovarQrCode(qrData) {
     const fd = new FormData();
+    fd.append('qr_data', qrData);
     fd.append('user_id', currentUserId);
-    fetch('ajax/revogar_master_qr.php', { method: 'POST', body: fd })
+
+    fetch('ajax/aprovar_master_qr.php', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(data => {
+            fecharScanner();
+            const resultArea = document.getElementById('qrResultArea');
+            resultArea.style.display = 'block';
             if (data.success) {
-                qrAtivoAtual = false;
-                atualizarPainelQr(false);
-                const userItem = document.querySelector(`.user-item[data-user-id="${currentUserId}"]`);
-                if (userItem) {
-                    userItem.dataset.qrAtivo = '0';
-                    userItem.querySelector('.badge-qr-ativo')?.remove();
-                }
-            } else { alert('Erro ao revogar: ' + (data.error || 'Falha')); }
+                resultArea.innerHTML = `
+                    <div class="qr-result-success">
+                        <i class="fas fa-check-circle"></i>
+                        <strong>Acesso Liberado!</strong>
+                        <span>${data.message}</span>
+                    </div>`;
+                setTimeout(() => { resultArea.style.display = 'none'; }, 8000);
+            } else {
+                resultArea.innerHTML = `
+                    <div class="qr-result-error">
+                        <i class="fas fa-times-circle"></i>
+                        <strong>Falha na validação</strong>
+                        <span>${data.message || 'Erro desconhecido.'}</span>
+                    </div>`;
+                setTimeout(() => { resultArea.style.display = 'none'; }, 6000);
+            }
         })
-        .catch(err => { console.error(err); alert('Erro de conexão'); });
+        .catch(err => {
+            fecharScanner();
+            console.error(err);
+            const resultArea = document.getElementById('qrResultArea');
+            resultArea.style.display = 'block';
+            resultArea.innerHTML = `
+                <div class="qr-result-error">
+                    <i class="fas fa-times-circle"></i>
+                    <strong>Erro de conexão</strong>
+                    <span>Verifique a conexão e tente novamente.</span>
+                </div>`;
+        });
 }
-document.getElementById('modalRevogar').addEventListener('click', function(e) {
-    if (e.target === this) fecharModal();
-});
+
 
 // ── Renderizar permissões ─────────────────────────────────────────────────
 function renderPermissions(permissions) {

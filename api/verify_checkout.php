@@ -142,7 +142,7 @@ try {
         ]);
         http_response_code(200);
         ob_clean();
-        echo json_encode(['status' => 'success'], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['status' => 'success', 'checkout_status' => $status_banco], JSON_UNESCAPED_UNICODE);
         ob_end_flush();
         exit;
     }
@@ -176,7 +176,7 @@ try {
 
             http_response_code(200);
             ob_clean();
-            echo json_encode(['status' => 'success'], JSON_UNESCAPED_UNICODE);
+            echo json_encode(['status' => 'success', 'checkout_status' => strtoupper($status_sumup)], JSON_UNESCAPED_UNICODE);
             ob_end_flush();
             exit;
         }

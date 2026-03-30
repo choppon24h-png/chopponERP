@@ -114,22 +114,51 @@ try {
         'checkout_status' => $order['checkout_status'],
     ]);
 
-    // ── Atualizar status do pedido para PROCESSING ────────────────────────────
-    $stmt = $conn->prepare("
-        UPDATE `order`
-        SET status_liberacao = 'PROCESSING'
-        WHERE checkout_id = ?
-    ");
-    $stmt->execute([$checkout_id]);
+    // ── Gerar session_id único para esta sessão de dispensação ────────────────
+    $session_id = sprintf(
+        '%s-%s-%s-%s-%s',
+        bin2hex(random_bytes(4)),
+        bin2hex(random_bytes(2)),
+        bin2hex(random_bytes(2)),
+        bin2hex(random_bytes(2)),
+        bin2hex(random_bytes(6))
+    );
 
-    Logger::info('start_session - status_liberacao atualizado para PROCESSING', [
+    // ── Atualizar status do pedido para PROCESSING + salvar session_id ────────
+    try {
+        $stmt = $conn->prepare("
+            UPDATE `order`
+            SET status_liberacao = 'PROCESSING',
+                session_id       = ?
+            WHERE checkout_id = ?
+        ");
+        $stmt->execute([$session_id, $checkout_id]);
+    } catch (\PDOException $e) {
+        // Se a coluna session_id não existir, atualizar apenas status_liberacao
+        Logger::warning('start_session - coluna session_id pode não existir', [
+            'error'       => $e->getMessage(),
+            'checkout_id' => $checkout_id,
+        ]);
+        $stmt = $conn->prepare("
+            UPDATE `order`
+            SET status_liberacao = 'PROCESSING'
+            WHERE checkout_id = ?
+        ");
+        $stmt->execute([$checkout_id]);
+    }
+
+    Logger::info('start_session - sessão iniciada com session_id', [
         'checkout_id' => $checkout_id,
         'order_id'    => $order['id'],
+        'session_id'  => $session_id,
     ]);
 
     http_response_code(200);
     ob_clean();
-    echo json_encode(['success' => true], JSON_UNESCAPED_UNICODE);
+    echo json_encode([
+        'success'    => true,
+        'session_id' => $session_id,
+    ], JSON_UNESCAPED_UNICODE);
     ob_end_flush();
 
 } catch (Throwable $e) {

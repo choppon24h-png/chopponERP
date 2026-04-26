@@ -48,6 +48,7 @@ class SumUpIntegration {
     private $merchant_code;
     private $checkout_url;
     private $merchant_url;
+    private $email;
     private $affiliate_key;
     private $affiliate_app_id;
 
@@ -56,6 +57,7 @@ class SumUpIntegration {
         $this->merchant_code = SUMUP_MERCHANT_CODE;
         $this->checkout_url  = SUMUP_CHECKOUT_URL;
         $this->merchant_url  = SUMUP_MERCHANT_URL . $this->merchant_code;
+            $this->email         = defined('SUMUP_EMAIL') ? SUMUP_EMAIL : 'choppon24h@gmail.com';
 
         // Fallback primário: constantes do config.php (sempre disponíveis)
         $this->affiliate_key    = defined('SUMUP_AFFILIATE_KEY')    ? SUMUP_AFFILIATE_KEY    : '';
@@ -233,6 +235,7 @@ class SumUpIntegration {
             'amount'             => floatval($order_data['valor']),
             'currency'           => 'BRL',
             'merchant_code'      => $this->merchant_code,
+                'pay_to_email'       => $this->email, // OBRIGATORIO para PIX (documentacao SumUp)
             'description'        => $order_data['descricao'],
             'return_url'         => SITE_URL . '/api/webhook.php',
             'date'               => $now_utc,

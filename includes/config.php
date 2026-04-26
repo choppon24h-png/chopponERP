@@ -71,6 +71,8 @@ define('SUMUP_MERCHANT_CODE', 'MCTSYDUE');
 define('SUMUP_CHECKOUT_URL', 'https://api.sumup.com/v0.1/checkouts/');
 define('SUMUP_MERCHANT_URL', 'https://api.sumup.com/v0.1/merchants/');
 
+define('SUMUP_EMAIL',        'choppon24h@gmail.com'); // E-mail titular conta SumUp — obrigatorio PIX
+
 // Configurações JWT
 define('JWT_SECRET', 'teaste');
 define('JWT_ALGORITHM', 'HS256');

@@ -254,6 +254,8 @@ class SumUpIntegration {
             'checkout_id'  => $response['data']->id ?? 'N/A',
             'status_field' => $response['data']->status ?? 'N/A',
             'curl_error'   => $response['curl_error'] ?: 'nenhum',
+            'raw_response' => isset($response['raw_response']) ? substr($response['raw_response'], 0, 1000) : '',
+            'data_keys'    => isset($response['data']) ? array_keys((array)$response['data']) : [],
         ]);
 
         if ($response['status'] !== 201 || !isset($response['data']->id)) {
@@ -261,6 +263,7 @@ class SumUpIntegration {
                 'http_status'  => $response['status'],
                 'raw_response' => $response['raw_response'],
                 'curl_error'   => $response['curl_error'],
+                'data_dump'    => print_r($response, true),
             ]);
             return false;
         }
@@ -362,6 +365,7 @@ class SumUpIntegration {
                 'http_status'  => $response['status'] ?? 0,
                 'raw_response' => $response['raw_response'] ?? '',
                 'curl_error'   => $response['curl_error'] ?? '',
+                'data_dump'    => print_r($response, true),
             ]);
             return false;
         }
@@ -377,7 +381,8 @@ class SumUpIntegration {
                 'checkout_id'   => $checkout_id,
                 'payment_type'  => $used_payment_type,
                 'response_keys' => array_keys((array) $data),
-                'raw_response'  => substr($response['raw_response'] ?? '', 0, 1000),
+                'raw_response'  => substr($response['raw_response'] ?? '', 0, 2000),
+                'data_dump'     => print_r($data, true),
             ]);
             return false;
         }
@@ -424,6 +429,7 @@ class SumUpIntegration {
                 'checkout_id'  => $checkout_id,
                 'payment_type' => $used_payment_type,
                 'artefacts'    => json_encode($pix_obj->artefacts),
+                'artefacts_dump' => print_r($pix_obj->artefacts, true),
             ]);
             return false;
         }

@@ -59,7 +59,7 @@ define('SESSION_TIMEOUT', 7200); // 2 horas em segundos
 // Configurações SumUp
 define('SUMUP_TOKEN', 'sup_sk_8vNpSEJPVudqJrWPdUlomuE3EfVofw1bL');
 define('SUMUP_MERCHANT_CODE', 'MCTSYDUE');
-define('SUMUP_CHECKOUT_URL', 'https://api.sumup.com/v0.1/checkouts/');
+define('SUMUP_CHECKOUT_URL', 'https://api.sumup.com/v0.1/checkouts');
 define('SUMUP_MERCHANT_URL', 'https://api.sumup.com/v0.1/merchants/');
 
 // Configurações JWT

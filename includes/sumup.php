@@ -340,6 +340,15 @@ class SumUpIntegration {
 
             $response = $this->makeRequest($url, 'PUT', $body);
 
+            Logger::payment('SumUp PIX DEBUG - resposta PUT raw', [
+                'checkout_id'  => $checkout_id,
+                'http_status'  => $response['status'] ?? 0,
+                'raw_response' => substr($response['raw_response'] ?? '', 0, 1000),
+                'data_keys'    => is_object($response['data'] ?? null) ? array_keys((array)$response['data']) : 'null',
+                'has_pix'      => isset($response['data']->pix),
+                'has_artefacts'=> isset($response['data']->pix->artefacts),
+            ]);
+
             Logger::info('SumUp PIX - Resposta Passo 2 (payment_type=' . $pt . ')', [
                 'http_status'  => $response['status'],
                 'has_pix'      => isset($response['data']->pix)         ? 'sim' : 'não',

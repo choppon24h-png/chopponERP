@@ -196,87 +196,76 @@ try {
         'id'        => $order_id,
         'valor'     => $input['valor'],
         'descricao' => $input['descricao'],
+        'cpf'       => $input['cpf'],
     ];
 
     // ══════════════════════════════════════════════════════════════════════════
-    // FLUXO PIX
+    // FLUXO PIX (via Mercado Pago — SumUp descontinuou PIX pela API)
     // ══════════════════════════════════════════════════════════════════════════
     if ($payment_method === 'pix') {
 
-        Logger::info('Create Order - Iniciando fluxo PIX', [
+        Logger::info('Create Order - Iniciando fluxo PIX (Mercado Pago)', [
             'order_id' => $order_id,
         ]);
 
-        $result = $sumup->createCheckoutPix($order_data);
+        require_once '../includes/mercadopago_pix.php';
 
-        Logger::info('Create Order - Resultado createCheckoutPix()', [
-            'order_id'        => $order_id,
-            'result_ok'       => !empty($result),
-            'checkout_id'     => $result['checkout_id'] ?? 'N/A',
-            'pix_code_ok'     => !empty($result['pix_code']),
-            'pix_code_len'    => strlen($result['pix_code'] ?? ''),
-            'qr_code_b64_ok'  => !empty($result['qr_code_base64']),
-            'qr_code_b64_len' => strlen($result['qr_code_base64'] ?? ''),
-        ]);
+        try {
+            $mp_pix = new MercadoPagoPix($tap['estabelecimento_id']);
+        } catch (\RuntimeException $e) {
+            Logger::error('Create Order - MercadoPago nao configurado', [
+                'order_id' => $order_id,
+                'error'    => $e->getMessage(),
+            ]);
+            http_response_code(500);
+            ob_clean();
+            echo json_encode([
+                'success'    => false,
+                'error'      => 'PIX nao configurado para este estabelecimento.',
+                'error_type' => 'MP_NOT_CONFIGURED',
+            ], JSON_UNESCAPED_UNICODE);
+            ob_end_flush();
+            exit;
+        }
 
-        if ($result && !empty($result['checkout_id'])) {
-            // ── Salvar no banco ───────────────────────────────────────────────
+        $mp_result = $mp_pix->createPixPayment($order_data);
+
+        if ($mp_result) {
+            // Salvar no banco (checkout_id = payment_id do Mercado Pago)
             $stmt = $conn->prepare("
                 UPDATE `order`
                 SET checkout_id = ?, pix_code = ?, response = ?
                 WHERE id = ?
             ");
             $stmt->execute([
-                $result['checkout_id'],
-                $result['pix_code'] ?? null,
-                $result['response']  ?? null,
+                (string) $mp_result['payment_id'],
+                $mp_result['qr_code'],
+                json_encode($mp_result),
                 $order_id,
             ]);
 
-            // ── Garantir QR Code Base64 ───────────────────────────────────────
-            // createCheckoutPix() já tenta gerar o QR Code internamente.
-            // Este bloco é um segundo fallback caso tenha falhado lá.
-            $qr_code_base64 = $result['qr_code_base64'] ?? '';
-
-            if (empty($qr_code_base64) && !empty($result['pix_code'])) {
-                Logger::warning('Create Order - qr_code_base64 vazio, tentando fallback', [
-                    'order_id' => $order_id,
-                ]);
-                $qr_code_base64 = $sumup->generateQRCode($result['pix_code']);
-            }
-
-            // Log de diagnóstico final para o app
-            Logger::info('Create Order - PIX criado com sucesso', [
-                'order_id'        => $order_id,
-                'checkout_id'     => $result['checkout_id'],
-                'pix_code_ok'     => !empty($result['pix_code']),
-                'qr_code_b64_ok'  => !empty($qr_code_base64),
-                'qr_code_b64_len' => strlen($qr_code_base64),
+            Logger::payment('Create Order - PIX Mercado Pago criado com sucesso', [
+                'order_id'   => $order_id,
+                'payment_id' => $mp_result['payment_id'],
+                'qr_code_ok' => !empty($mp_result['qr_code']),
+                'qr_b64_ok'  => !empty($mp_result['qr_code_base64']),
             ]);
-
-            if (empty($qr_code_base64)) {
-                Logger::error('Create Order - QR Code Base64 vazio após todos os fallbacks', [
-                    'order_id'    => $order_id,
-                    'checkout_id' => $result['checkout_id'],
-                    'pix_code'    => substr($result['pix_code'] ?? '', 0, 50) . '...',
-                ]);
-            }
 
             http_response_code(200);
             ob_clean();
             echo json_encode([
                 'success'     => true,
-                'checkout_id' => $result['checkout_id'],
-                'qr_code'     => $qr_code_base64,
-                'pix_code'    => $result['pix_code'] ?? null,
+                'checkout_id' => (string) $mp_result['payment_id'],
+                'qr_code'     => $mp_result['qr_code_base64'] ?? '',
+                'pix_code'    => $mp_result['qr_code']        ?? null,
+                'ticket_url'  => $mp_result['ticket_url']     ?? null,
             ], JSON_UNESCAPED_UNICODE);
 
         } else {
-            // Falha ao criar checkout PIX
             $conn->prepare("UPDATE `order` SET checkout_status = 'FAILED' WHERE id = ?")
                  ->execute([$order_id]);
 
-            Logger::error('Create Order - PIX falhou (createCheckoutPix retornou false/vazio)', [
+            Logger::error('Create Order - PIX Mercado Pago falhou', [
                 'order_id' => $order_id,
             ]);
 
@@ -284,8 +273,8 @@ try {
             ob_clean();
             echo json_encode([
                 'success'    => false,
-                'error'      => 'Erro ao criar checkout PIX. Verifique a configuração SumUp e os logs do servidor.',
-                'error_type' => 'PIX_CHECKOUT_FAILED',
+                'error'      => 'Erro ao gerar PIX. Tente novamente.',
+                'error_type' => 'PIX_MP_FAILED',
             ], JSON_UNESCAPED_UNICODE);
         }
 

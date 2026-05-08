@@ -3,16 +3,16 @@
  * API — Verificar Checkout
  * POST /api/verify_checkout.php
  *
- * v3.0.0 — Correção completa do polling de status
+ * v3.1.0 — Suporte a polling direto na API Mercado Pago para PIX
  *
  * MELHORIAS APLICADAS:
  *
- *   1. Consulta ao banco E à API SumUp em paralelo:
+ *   1. Consulta ao banco E à API SumUp/Mercado Pago em paralelo:
  *      - Se o banco já tiver status aprovado → retorna imediatamente (rápido)
- *      - Se o banco tiver PENDING → consulta a API SumUp para status atualizado
- *        e atualiza o banco se aprovado
+ *      - Se o banco tiver PENDING → consulta a API correspondente (SumUp ou MP)
+ *        para status atualizado e atualiza o banco se aprovado
  *      Isso resolve o caso em que o webhook ainda não chegou mas o pagamento
- *      já foi aprovado na SumUp.
+ *      já foi aprovado na API.
  *
  *   2. Status aceitos como aprovados expandidos:
  *      PAID, SUCCESSFUL, APPROVED, COMPLETED
@@ -20,13 +20,12 @@
  *
  *   3. Logs de diagnóstico detalhados para rastrear o fluxo de polling.
  *
- *   4. Suporte a polling direto na API SumUp para PIX:
- *      GET /v0.1/checkouts/{checkout_id} → campo status
+ *   4. Suporte a polling direto na API SumUp para cartão e Mercado Pago para PIX.
  *
  * FLUXO DE POLLING DO APP ANDROID:
  *   App → POST verify_checkout.php (checkout_id, android_id)
  *     → Verifica banco local
- *     → Se PENDING: consulta SumUp API
+ *     → Se PENDING: consulta SumUp API (cartão) ou Mercado Pago API (PIX)
  *     → Atualiza banco se aprovado
  *   App ← { status: "success" }  ou  { status: "false", checkout_status: "PENDING" }
  */
@@ -101,7 +100,7 @@ try {
 
     // ── Buscar pedido pelo checkout_id ────────────────────────────────────────
     $stmt = $conn->prepare("
-        SELECT id, checkout_status, method
+        SELECT id, checkout_status, method, estabelecimento_id
         FROM `order`
         WHERE checkout_id = ?
         LIMIT 1
@@ -125,13 +124,15 @@ try {
     }
 
     $status_banco = strtoupper($order['checkout_status'] ?? '');
+    $method = strtolower($order['method'] ?? '');
+    $estabelecimento_id = $order['estabelecimento_id'];
 
     Logger::info('verify_checkout - consultado', [
         'checkout_id'     => $checkout_id,
         'android_id'      => $android_id,
         'checkout_status' => $status_banco,
         'order_id'        => $order['id'],
-        'payment_method'  => $order['method'] ?? 'unknown',
+        'payment_method'  => $method,
     ]);
 
     // ── Verificação 1: Status já aprovado no banco ────────────────────────────
@@ -147,36 +148,46 @@ try {
         exit;
     }
 
-    // ── Verificação 2: Status PENDING — consultar API SumUp ──────────────────
+    // ── Verificação 2: Status PENDING — consultar API correspondente ──────────
     // Só consulta a API se o status local for PENDING (não FAILED/EXPIRED)
     if ($status_banco === 'PENDING') {
-        Logger::info('verify_checkout - Status PENDING, consultando API SumUp', [
+        Logger::info('verify_checkout - Status PENDING, consultando API', [
             'checkout_id' => $checkout_id,
+            'method'      => $method,
         ]);
 
-        $status_sumup = consultarStatusSumUp($checkout_id);
+        $status_api = null;
 
-        Logger::info('verify_checkout - Status retornado pela SumUp', [
-            'checkout_id'  => $checkout_id,
-            'status_sumup' => $status_sumup,
+        if ($method === 'pix') {
+            // Consultar Mercado Pago
+            $status_api = consultarStatusMercadoPago($conn, $checkout_id, $estabelecimento_id);
+        } else {
+            // Consultar SumUp (credit/debit)
+            $status_api = consultarStatusSumUp($checkout_id);
+        }
+
+        Logger::info('verify_checkout - Status retornado pela API', [
+            'checkout_id' => $checkout_id,
+            'status_api'  => $status_api,
+            'method'      => $method,
         ]);
 
-        if ($status_sumup && in_array(strtoupper($status_sumup), $status_aprovados)) {
+        if ($status_api && in_array(strtoupper($status_api), $status_aprovados)) {
             // Atualizar banco com o status aprovado
             $conn->prepare("
                 UPDATE `order`
                 SET checkout_status = ?
                 WHERE checkout_id = ?
-            ")->execute([strtoupper($status_sumup), $checkout_id]);
+            ")->execute([strtoupper($status_api), $checkout_id]);
 
-            Logger::info('verify_checkout - APROVADO (API SumUp) — banco atualizado', [
-                'checkout_id'  => $checkout_id,
-                'status_sumup' => $status_sumup,
+            Logger::info('verify_checkout - APROVADO (API) — banco atualizado', [
+                'checkout_id' => $checkout_id,
+                'status_api'  => $status_api,
             ]);
 
             http_response_code(200);
             ob_clean();
-            echo json_encode(['status' => 'success', 'checkout_status' => strtoupper($status_sumup)], JSON_UNESCAPED_UNICODE);
+            echo json_encode(['status' => 'success', 'checkout_status' => strtoupper($status_api)], JSON_UNESCAPED_UNICODE);
             ob_end_flush();
             exit;
         }
@@ -209,7 +220,7 @@ try {
 ob_end_flush();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FUNÇÃO AUXILIAR: Consultar status do checkout diretamente na API SumUp
+// FUNÇÕES AUXILIARES
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -265,4 +276,99 @@ function consultarStatusSumUp($checkout_id) {
     }
 
     return $data->status;
+}
+
+/**
+ * Consulta o status de um pagamento diretamente na API Mercado Pago.
+ * Endpoint: GET /v1/payments/{payment_id}
+ *
+ * @param PDO $conn
+ * @param string $payment_id (checkout_id)
+ * @param int $estabelecimento_id
+ * @return string|null  Status mapeado (ex: "PAID", "PENDING") ou null em falha
+ */
+function consultarStatusMercadoPago($conn, $payment_id, $estabelecimento_id) {
+    // Buscar token do Mercado Pago para o estabelecimento
+    $stmt = $conn->prepare("
+        SELECT access_token 
+        FROM mercadopago_config 
+        WHERE estabelecimento_id = ? AND status = 1 
+        LIMIT 1
+    ");
+    $stmt->execute([$estabelecimento_id]);
+    $config = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$config || empty($config['access_token'])) {
+        Logger::warning('verify_checkout consultarStatusMercadoPago - config não encontrada', [
+            'estabelecimento_id' => $estabelecimento_id,
+            'payment_id'         => $payment_id,
+        ]);
+        return null;
+    }
+
+    $url = "https://api.mercadopago.com/v1/payments/" . $payment_id;
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Authorization: Bearer ' . $config['access_token'],
+        'Content-Type: application/json',
+    ]);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+
+    $response   = curl_exec($ch);
+    $http_code  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_error = curl_error($ch);
+    curl_close($ch);
+
+    if ($curl_error) {
+        Logger::warning('verify_checkout consultarStatusMercadoPago - cURL error', [
+            'error'      => $curl_error,
+            'payment_id' => $payment_id,
+        ]);
+        return null;
+    }
+
+    if ($http_code !== 200) {
+        Logger::warning('verify_checkout consultarStatusMercadoPago - HTTP não-200', [
+            'http_code'  => $http_code,
+            'payment_id' => $payment_id,
+        ]);
+        return null;
+    }
+
+    $data = json_decode($response, true);
+
+    if (!$data || !isset($data['status'])) {
+        Logger::warning('verify_checkout consultarStatusMercadoPago - resposta sem campo status', [
+            'payment_id'   => $payment_id,
+            'raw_response' => substr($response, 0, 200),
+        ]);
+        return null;
+    }
+
+    // Mapear status do Mercado Pago para o padrão do sistema
+    $mp_status_map = [
+        'approved'    => 'PAID',
+        'pending'     => 'PENDING',
+        'in_process'  => 'PENDING',
+        'authorized'  => 'PENDING',
+        'rejected'    => 'FAILED',
+        'cancelled'   => 'FAILED',
+        'refunded'    => 'FAILED',
+        'charged_back'=> 'FAILED',
+    ];
+
+    $mapped_status = $mp_status_map[$data['status']] ?? 'PENDING';
+
+    Logger::info('verify_checkout consultarStatusMercadoPago - status mapeado', [
+        'payment_id'    => $payment_id,
+        'mp_status'     => $data['status'],
+        'mapped_status' => $mapped_status,
+    ]);
+
+    return $mapped_status;
 }

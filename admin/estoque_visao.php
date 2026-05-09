@@ -74,6 +74,9 @@ require_once '../includes/header.php';
         <a href="estoque_relatorios.php" class="tab-link">
             <i class="fas fa-chart-bar"></i> Relatórios
         </a>
+        <a href="estoque_inventario.php" class="tab-link">
+            <i class="fas fa-archive"></i> Inventário
+        </a>
     </div>
 
     <!-- Cards de Totalizadores -->

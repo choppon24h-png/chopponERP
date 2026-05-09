@@ -43,6 +43,9 @@ require_once '../includes/header.php';
         <a href="estoque_inventario.php" class="tab-link">
             <i class="fas fa-archive"></i> Inventário
         </a>
+        <a href="estoque_pedidos.php" class="tab-link">
+            <i class="fas fa-shopping-bag"></i> Pedidos
+        </a>
     </div>
 
     <!-- Seletor de Relatório -->

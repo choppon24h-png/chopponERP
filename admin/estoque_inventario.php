@@ -404,6 +404,9 @@ require_once '../includes/header.php';
         <a href="estoque_movimentacoes.php" class="tab-link"><i class="fas fa-exchange-alt"></i> Movimentações</a>
         <a href="estoque_relatorios.php"    class="tab-link"><i class="fas fa-chart-bar"></i> Relatórios</a>
         <a href="estoque_inventario.php"    class="tab-link active"><i class="fas fa-archive"></i> Inventário</a>
+        <a href="estoque_pedidos.php" class="tab-link">
+            <i class="fas fa-shopping-bag"></i> Pedidos
+        </a>
     </div>
 
     <!-- Alertas -->

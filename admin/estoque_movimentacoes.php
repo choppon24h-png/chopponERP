@@ -159,6 +159,9 @@ require_once '../includes/header.php';
             <button class="btn btn-warning" onclick="abrirModalMovimentacao('ajuste')">
                 <i class="fas fa-sync"></i> Ajuste de Estoque
             </button>
+            <a href="estoque_pedidos.php" class="btn" style="background:#7c3aed;color:#fff;font-weight:600;display:inline-flex;align-items:center;gap:6px;">
+                <i class="fas fa-shopping-bag"></i> Novo Pedido
+            </a>
         </div>
     </div>
 

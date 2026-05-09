@@ -105,6 +105,12 @@ $menu_structure = [
                 'icon' => 'fas fa-chart-bar',
                 'url' => 'admin/estoque_relatorios.php',
                 'page_key' => 'estoque_relatorios'
+            ],
+            'estoque_inventario' => [
+                'title' => 'Inventário',
+                'icon' => 'fas fa-archive',
+                'url' => 'admin/estoque_inventario.php',
+                'page_key' => 'estoque_inventario'
             ]
         ]
     ],

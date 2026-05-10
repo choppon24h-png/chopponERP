@@ -7,6 +7,10 @@
  *   checkout_id   (obrigatório)
  *   qtd_ml        — volume liberado em ml
  *   total_pulsos  — total de pulsos QP: reportado pelo ESP32 (auditoria)
+ *
+ * CORREÇÃO v3.2.0:
+ *   action=finalizada agora debita o volume dispensado em tap.volume_consumido
+ *   usando o tap_id do pedido, garantindo que taps.php mostre o saldo correto.
  */
 
 // ── Buffer de saída: captura TUDO desde o início ─────────────────────────
@@ -63,12 +67,26 @@ if ($action === 'iniciada') {
     $stmt->execute([$checkout_id]);
     $order = $stmt->fetch();
 
-    if ($order) {
-        $qtd_liberada    = $order['qtd_liberada'] + $qtd_ml;
-        $status_liberacao = ($qtd_liberada >= $order['quantidade']) ? 'FINISHED' : 'PROCESSING';
+    if (!$order) {
+        http_response_code(404);
+        ob_clean();
+        echo json_encode(['error' => 'Pedido não encontrado']);
+        exit;
+    }
 
-        // Verifica se a coluna total_pulsos existe na tabela antes de atualizar
-        // (compatibilidade com bancos que ainda não rodaram a migration)
+    // Proteção contra duplo processamento
+    if ($order['status_liberacao'] === 'FINISHED') {
+        ob_clean();
+        echo json_encode(['success' => true, 'note' => 'already_finished']);
+        exit;
+    }
+
+    $qtd_liberada     = $order['qtd_liberada'] + $qtd_ml;
+    $status_liberacao = ($qtd_liberada >= $order['quantidade']) ? 'FINISHED' : 'PROCESSING';
+
+    $conn->beginTransaction();
+    try {
+        // 1. Atualizar pedido
         try {
             $stmt = $conn->prepare("
                 UPDATE `order`
@@ -79,7 +97,6 @@ if ($action === 'iniciada') {
             ");
             $stmt->execute([$qtd_liberada, $status_liberacao, $total_pulsos, $order['id']]);
         } catch (\PDOException $e) {
-            // Coluna total_pulsos não existe — atualiza sem ela
             $stmt = $conn->prepare("
                 UPDATE `order`
                 SET qtd_liberada     = ?,
@@ -89,19 +106,54 @@ if ($action === 'iniciada') {
             $stmt->execute([$qtd_liberada, $status_liberacao, $order['id']]);
         }
 
-        http_response_code(200);
+        // 2. Debitar volume no barril (tap)
+        //    qtd_ml vem em ml → converter para litros (÷ 1000)
+        $tap_consumido = 0;
+        $tap_atual     = 0;
+
+        if (!empty($order['tap_id']) && $qtd_ml > 0) {
+            $volume_litros = $qtd_ml / 1000.0;
+
+            $stmtTap = $conn->prepare("
+                UPDATE tap
+                SET volume_consumido = volume_consumido + ?
+                WHERE id = ?
+            ");
+            $stmtTap->execute([$volume_litros, $order['tap_id']]);
+
+            // Buscar valores atualizados para retornar ao Android
+            $stmtT = $conn->prepare("SELECT volume, volume_consumido FROM tap WHERE id = ? LIMIT 1");
+            $stmtT->execute([$order['tap_id']]);
+            $tap_row = $stmtT->fetch();
+            if ($tap_row) {
+                $tap_consumido = (float)$tap_row['volume_consumido'];
+                $tap_atual     = max(0, (float)$tap_row['volume'] - $tap_consumido);
+            }
+        }
+
+        $conn->commit();
+
+    } catch (\PDOException $e) {
+        $conn->rollBack();
+        http_response_code(500);
         ob_clean();
         echo json_encode([
-            'success'       => true,
-            'status'        => $status_liberacao,
-            'qtd_liberada'  => $qtd_liberada,
-            'total_pulsos'  => $total_pulsos,
+            'success' => false,
+            'error'   => 'Erro ao finalizar liberação: ' . $e->getMessage(),
         ]);
-    } else {
-        http_response_code(404);
-        ob_clean();
-        echo json_encode(['error' => 'Pedido não encontrado']);
+        exit;
     }
+
+    http_response_code(200);
+    ob_clean();
+    echo json_encode([
+        'success'             => true,
+        'status'              => $status_liberacao,
+        'qtd_liberada'        => $qtd_liberada,
+        'total_pulsos'        => $total_pulsos,
+        'tap_volume_consumido'=> $tap_consumido,
+        'tap_volume_atual'    => $tap_atual,
+    ]);
 
 } else {
     http_response_code(400);

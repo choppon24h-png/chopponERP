@@ -4,7 +4,7 @@
  * POST /api/finish_sale.php
  *
  * Chamado APÓS receber DONE do ESP32.
- * Confirma a venda com o volume real dispensado.
+ * Confirma a venda com o volume real dispensado e DEBITA o barril.
  *
  * Campos POST obrigatórios:
  *   checkout_id   — ID do pedido
@@ -17,7 +17,15 @@
  *   android_id    — ID do dispositivo Android
  *
  * Resposta de sucesso:
- *   { "success": true, "status": "FINISHED", "qtd_liberada": 300, "ml_real": 298 }
+ *   { "success": true, "status": "FINISHED", "qtd_liberada": 300, "ml_real": 298,
+ *     "tap_volume_consumido": 1500, "tap_volume_atual": 48500 }
+ *
+ * CORREÇÃO v3.2.0:
+ *   Após marcar o pedido como FINISHED, debita o volume dispensado
+ *   diretamente em tap.volume_consumido usando o tap_id do próprio pedido.
+ *   O volume_atual exibido na tela taps.php é calculado como
+ *   (tap.volume - tap.volume_consumido), portanto basta incrementar
+ *   volume_consumido para que a tela reflita o saldo real.
  */
 ob_start();
 header('Content-Type: application/json');
@@ -52,7 +60,7 @@ if (empty($checkout_id)) {
 
 $conn = getDBConnection();
 
-// ── Buscar pedido ─────────────────────────────────────────────────────────────
+// ── Buscar pedido com tap_id ──────────────────────────────────────────────────
 $stmt = $conn->prepare("SELECT * FROM `order` WHERE checkout_id = ? LIMIT 1");
 $stmt->execute([$checkout_id]);
 $order = $stmt->fetch();
@@ -61,6 +69,35 @@ if (!$order) {
     http_response_code(404);
     ob_clean();
     echo json_encode(['error' => 'Pedido não encontrado']);
+    exit;
+}
+
+// ── Proteção contra duplo processamento ──────────────────────────────────────
+// Se o pedido já foi finalizado, retorna sucesso sem debitar novamente
+if ($order['status_liberacao'] === 'FINISHED') {
+    // Buscar dados atuais do barril para retornar
+    $tap_consumido = 0;
+    $tap_atual     = 0;
+    if (!empty($order['tap_id'])) {
+        $stmtT = $conn->prepare("SELECT volume, volume_consumido FROM tap WHERE id = ? LIMIT 1");
+        $stmtT->execute([$order['tap_id']]);
+        $tap_row = $stmtT->fetch();
+        if ($tap_row) {
+            $tap_consumido = (float)$tap_row['volume_consumido'];
+            $tap_atual     = max(0, (float)$tap_row['volume'] - $tap_consumido);
+        }
+    }
+    ob_clean();
+    echo json_encode([
+        'success'             => true,
+        'status'              => 'FINISHED',
+        'qtd_liberada'        => $order['qtd_liberada'],
+        'ml_real'             => $ml_real,
+        'total_pulsos'        => $total_pulsos,
+        'tap_volume_consumido'=> $tap_consumido,
+        'tap_volume_atual'    => $tap_atual,
+        'note'                => 'already_finished',
+    ]);
     exit;
 }
 
@@ -77,7 +114,6 @@ if (!empty($command_id)) {
         // Tabela pode não existir em ambiente legado — continuar
     }
 } else {
-    // Atualiza pela última venda STARTED deste checkout
     try {
         $stmt = $conn->prepare("
             UPDATE ble_sales
@@ -93,35 +129,81 @@ if (!empty($command_id)) {
 }
 
 // ── Calcular volume total liberado ────────────────────────────────────────────
-$qtd_liberada    = $order['qtd_liberada'] + $ml_real;
+// ml_real vem em mililitros do Android; quantidade no pedido também é em ml
+$qtd_liberada     = $order['qtd_liberada'] + $ml_real;
 $status_liberacao = ($qtd_liberada >= $order['quantidade']) ? 'FINISHED' : 'PROCESSING';
 
-// ── Atualizar pedido ──────────────────────────────────────────────────────────
+// ── Iniciar transação para garantir consistência pedido + barril ──────────────
+$conn->beginTransaction();
+
 try {
-    $stmt = $conn->prepare("
-        UPDATE `order`
-        SET qtd_liberada     = ?,
-            status_liberacao = ?,
-            total_pulsos     = ?
-        WHERE id = ?
-    ");
-    $stmt->execute([$qtd_liberada, $status_liberacao, $total_pulsos, $order['id']]);
+    // 1. Atualizar pedido
+    try {
+        $stmt = $conn->prepare("
+            UPDATE `order`
+            SET qtd_liberada     = ?,
+                status_liberacao = ?,
+                total_pulsos     = ?
+            WHERE id = ?
+        ");
+        $stmt->execute([$qtd_liberada, $status_liberacao, $total_pulsos, $order['id']]);
+    } catch (\PDOException $e) {
+        // Fallback sem total_pulsos
+        $stmt = $conn->prepare("
+            UPDATE `order`
+            SET qtd_liberada     = ?,
+                status_liberacao = ?
+            WHERE id = ?
+        ");
+        $stmt->execute([$qtd_liberada, $status_liberacao, $order['id']]);
+    }
+
+    // 2. Debitar volume no barril (tap) usando tap_id do pedido
+    //    volume_consumido é armazenado em Litros (L), ml_real vem em ml
+    //    Conversão: ml_real / 1000 = litros
+    $tap_consumido = 0;
+    $tap_atual     = 0;
+
+    if (!empty($order['tap_id']) && $ml_real > 0) {
+        $volume_litros = $ml_real / 1000.0;
+
+        $stmtTap = $conn->prepare("
+            UPDATE tap
+            SET volume_consumido = volume_consumido + ?
+            WHERE id = ?
+        ");
+        $stmtTap->execute([$volume_litros, $order['tap_id']]);
+
+        // Buscar valores atualizados para retornar ao Android
+        $stmtT = $conn->prepare("SELECT volume, volume_consumido FROM tap WHERE id = ? LIMIT 1");
+        $stmtT->execute([$order['tap_id']]);
+        $tap_row = $stmtT->fetch();
+        if ($tap_row) {
+            $tap_consumido = (float)$tap_row['volume_consumido'];
+            $tap_atual     = max(0, (float)$tap_row['volume'] - $tap_consumido);
+        }
+    }
+
+    $conn->commit();
+
 } catch (\PDOException $e) {
-    // Coluna total_pulsos pode não existir — fallback sem ela
-    $stmt = $conn->prepare("
-        UPDATE `order`
-        SET qtd_liberada     = ?,
-            status_liberacao = ?
-        WHERE id = ?
-    ");
-    $stmt->execute([$qtd_liberada, $status_liberacao, $order['id']]);
+    $conn->rollBack();
+    http_response_code(500);
+    ob_clean();
+    echo json_encode([
+        'success' => false,
+        'error'   => 'Erro ao finalizar venda: ' . $e->getMessage(),
+    ]);
+    exit;
 }
 
 ob_clean();
 echo json_encode([
-    'success'      => true,
-    'status'       => $status_liberacao,
-    'qtd_liberada' => $qtd_liberada,
-    'ml_real'      => $ml_real,
-    'total_pulsos' => $total_pulsos
+    'success'             => true,
+    'status'              => $status_liberacao,
+    'qtd_liberada'        => $qtd_liberada,
+    'ml_real'             => $ml_real,
+    'total_pulsos'        => $total_pulsos,
+    'tap_volume_consumido'=> $tap_consumido,
+    'tap_volume_atual'    => $tap_atual,
 ]);

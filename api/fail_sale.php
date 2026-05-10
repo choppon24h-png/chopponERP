@@ -82,23 +82,36 @@ if (!empty($command_id)) {
         // Ignorar
     }
 }
-
-// ── Atualizar pedido ──────────────────────────────────────────────────────────
-$stmt = $conn->prepare("SELECT id, qtd_liberada, quantidade FROM `order` WHERE checkout_id = ? LIMIT 1");
+// ── Atualizar pedido + debitar volume parcial no barril ────────────────────
+$stmt = $conn->prepare("SELECT id, tap_id, qtd_liberada, quantidade FROM `order` WHERE checkout_id = ? LIMIT 1");
 $stmt->execute([$checkout_id]);
 $order = $stmt->fetch();
 
 if ($order) {
-    if ($ml_parcial > 0) {
-        $qtd_liberada = $order['qtd_liberada'] + $ml_parcial;
-        $status       = ($qtd_liberada >= $order['quantidade']) ? 'FINISHED' : 'FAILED';
-        $conn->prepare("
-            UPDATE `order` SET qtd_liberada = ?, status_liberacao = ? WHERE id = ?
-        ")->execute([$qtd_liberada, $status, $order['id']]);
-    } else {
-        $conn->prepare("
-            UPDATE `order` SET status_liberacao = 'FAILED' WHERE id = ?
-        ")->execute([$order['id']]);
+    $conn->beginTransaction();
+    try {
+        if ($ml_parcial > 0) {
+            $qtd_liberada = $order['qtd_liberada'] + $ml_parcial;
+            $status       = ($qtd_liberada >= $order['quantidade']) ? 'FINISHED' : 'FAILED';
+            $conn->prepare("
+                UPDATE `order` SET qtd_liberada = ?, status_liberacao = ? WHERE id = ?
+            ")->execute([$qtd_liberada, $status, $order['id']]);
+
+            // Debitar volume parcial no barril (ml → litros)
+            if (!empty($order['tap_id'])) {
+                $volume_litros = $ml_parcial / 1000.0;
+                $conn->prepare("
+                    UPDATE tap SET volume_consumido = volume_consumido + ? WHERE id = ?
+                ")->execute([$volume_litros, $order['tap_id']]);
+            }
+        } else {
+            $conn->prepare("
+                UPDATE `order` SET status_liberacao = 'FAILED' WHERE id = ?
+            ")->execute([$order['id']]);
+        }
+        $conn->commit();
+    } catch (\PDOException $e) {
+        $conn->rollBack();
     }
 }
 

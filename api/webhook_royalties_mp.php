@@ -220,24 +220,50 @@ exit;
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Resolve o access_token do Mercado Pago para o estabelecimento RECEBEDOR (matriz).
+ * Prioridade: payment_config → mercadopago_config por is_matriz=1 → mercadopago_config id=1 → constante global.
+ */
+function _resolver_token_mp_recebedor(\PDO $conn): string
+{
+    // 1. Buscar a matriz pelo flag is_matriz
+    $recebedor_id = null;
+    try {
+        $stmt = $conn->query("SELECT id FROM estabelecimentos WHERE is_matriz = 1 AND status = 1 LIMIT 1");
+        $m = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if ($m) $recebedor_id = (int)$m['id'];
+    } catch (\Exception $e) { /* coluna pode não existir */ }
+
+    if (!$recebedor_id) $recebedor_id = 1; // fallback: estab 1
+
+    // 2. Tentar payment_config
+    try {
+        $stmt = $conn->prepare("SELECT mp_access_token FROM payment_config WHERE estabelecimento_id = ? AND mp_access_token IS NOT NULL AND mp_access_token != '' LIMIT 1");
+        $stmt->execute([$recebedor_id]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if ($row && !empty($row['mp_access_token'])) return $row['mp_access_token'];
+    } catch (\Exception $e) { /* tabela pode não existir */ }
+
+    // 3. Tentar mercadopago_config do recebedor
+    try {
+        $stmt = $conn->prepare("SELECT access_token FROM mercadopago_config WHERE estabelecimento_id = ? AND status = 1 LIMIT 1");
+        $stmt->execute([$recebedor_id]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if ($row && !empty($row['access_token'])) return $row['access_token'];
+    } catch (\Exception $e) {}
+
+    // 4. Fallback: constante global
+    $token = defined('MP_ACCESS_TOKEN') ? MP_ACCESS_TOKEN : (getenv('MP_ACCESS_TOKEN') ?: null);
+    if (!$token) throw new \Exception('access_token do Mercado Pago não configurado para o recebedor (is_matriz=1, id=' . $recebedor_id . ')');
+    return $token;
+}
+
+/**
  * Consulta o pagamento na API do Mercado Pago usando o access_token
- * configurado na tabela mercadopago_config (qualquer estabelecimento ativo).
+ * do estabelecimento RECEBEDOR (matriz), não de qualquer config ativa.
  */
 function _consultar_pagamento_mp(string $payment_id, \PDO $conn): ?array
 {
-    // Buscar access_token de qualquer config ativa
-    $row = null;
-    try {
-        $stmt = $conn->query("SELECT access_token FROM mercadopago_config WHERE status = 1 LIMIT 1");
-        $row  = $stmt->fetch(\PDO::FETCH_ASSOC);
-    } catch (\Exception $e) {}
-
-    if (!$row || empty($row['access_token'])) {
-        // Tentar variável de ambiente como fallback
-        $token = defined('MP_ACCESS_TOKEN') ? MP_ACCESS_TOKEN : (getenv('MP_ACCESS_TOKEN') ?: null);
-        if (!$token) throw new \Exception('access_token do Mercado Pago não configurado');
-        $row = ['access_token' => $token];
-    }
+    $token = _resolver_token_mp_recebedor($conn);
 
     $url = "https://api.mercadopago.com/v1/payments/{$payment_id}";
     $ch  = curl_init($url);
@@ -267,15 +293,14 @@ function _consultar_pagamento_mp(string $payment_id, \PDO $conn): ?array
 function _buscar_payment_id_do_order(string $order_id, \PDO $conn): ?string
 {
     try {
-        $row = $conn->query("SELECT access_token FROM mercadopago_config WHERE status = 1 LIMIT 1")->fetch(\PDO::FETCH_ASSOC);
-        if (!$row) return null;
+        $token = _resolver_token_mp_recebedor($conn);
 
         $url = "https://api.mercadopago.com/merchant_orders/{$order_id}";
         $ch  = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 10,
-            CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . $row['access_token']],
+            CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . $token],
         ]);
         $resp = json_decode(curl_exec($ch), true);
         curl_close($ch);

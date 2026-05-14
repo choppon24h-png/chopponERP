@@ -440,11 +440,15 @@ require_once '../includes/header.php';
                                         <i class="fas fa-edit"></i>
                                     </button>
                                     <?php endif; ?>
-                                    <!-- Pagar (gerar link) -->
-                                    <?php if ($r['status'] === 'pendente'): ?>
+                                    <!-- Pagar (gerar link) — SOMENTE ADMIN GERAL -->
+                                    <?php if (isAdminGeral() && $r['status'] === 'pendente'): ?>
                                     <button class="btn btn-success" onclick="pagarRoyalty(<?= $r['id'] ?>)" title="Gerar Link de Pagamento">
                                         <i class="fas fa-credit-card"></i> Pagar
                                     </button>
+                                    <?php elseif (!isAdminGeral() && $r['status'] === 'pendente'): ?>
+                                    <span class="badge bg-warning text-dark" title="Somente o administrador pode iniciar o pagamento">
+                                        <i class="fas fa-lock"></i> Aguardando Admin
+                                    </span>
                                     <?php endif; ?>
                                     <!-- Boleto/Reenvio -->
                                     <?php if (in_array($r['status'], ['link_gerado','enviado'])): ?>
@@ -462,15 +466,15 @@ require_once '../includes/header.php';
                                         <i class="fas fa-envelope"></i>
                                     </button>
                                     <?php endif; ?>
-                                    <!-- Pagamento Manual -->
-                                    <?php if (!in_array($r['status'], ['pago','conciliado','pagamento_manual','cancelado'])): ?>
-                                    <button class="btn btn-purple" onclick="pagamentoManual(<?= $r['id'] ?>)" title="Marcar como Pago Manualmente"
+                                    <!-- Pagamento Manual — SOMENTE ADMIN GERAL -->
+                                    <?php if (isAdminGeral() && !in_array($r['status'], ['pago','conciliado','pagamento_manual','cancelado'])): ?>
+                                    <button class="btn btn-purple" onclick="pagamentoManual(<?= $r['id'] ?>)" title="Dar baixa manual (somente admin)"
                                         style="background:#7c3aed;color:#fff;border-color:#7c3aed;">
                                         <i class="fas fa-hand-holding-usd"></i>
                                     </button>
                                     <?php endif; ?>
-                                    <!-- Cancelar -->
-                                    <?php if (!in_array($r['status'], ['pago','conciliado','pagamento_manual','cancelado'])): ?>
+                                    <!-- Cancelar — SOMENTE ADMIN GERAL -->
+                                    <?php if (isAdminGeral() && !in_array($r['status'], ['pago','conciliado','pagamento_manual','cancelado'])): ?>
                                     <button class="btn btn-danger" onclick="cancelarRoyalty(<?= $r['id'] ?>)" title="Cancelar">
                                         <i class="fas fa-times"></i>
                                     </button>

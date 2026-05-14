@@ -56,15 +56,15 @@ try {
         SELECT
             COALESCE(SUM(CASE WHEN status IN ('pendente','link_gerado','enviado') THEN valor_royalties ELSE 0 END), 0) AS total_pendente,
             COALESCE(SUM(CASE WHEN status IN ('pago','conciliado','pagamento_manual')  THEN valor_royalties ELSE 0 END), 0) AS total_pago,
-            COALESCE(SUM(valor_faturamento_bruto), 0) AS faturamento_bruto,
-            COUNT(*) AS total_registros,
+            COALESCE(SUM(CASE WHEN status != 'cancelado' THEN valor_faturamento_bruto ELSE 0 END), 0) AS faturamento_bruto,
+            COUNT(CASE WHEN status != 'cancelado' THEN 1 END) AS total_registros,
             COUNT(CASE WHEN status IN ('pendente','link_gerado','enviado') THEN 1 END) AS qtd_pendente,
             COUNT(CASE WHEN status IN ('pago','conciliado','pagamento_manual') THEN 1 END) AS qtd_pago
         FROM royalties
         WHERE {$_dash_where}
     ")->fetch(\PDO::FETCH_ASSOC);
 } catch (\Exception $_e) {
-    $_dash = ['total_pendente'=>0,'total_pago'=>0,'faturamento_bruto'=>0,'total_registros'=>0,'qtd_pendente'=>0,'qtd_pago'=>0];
+    $_dash = ['total_pendente'=>0,'total_pago'=>0,'faturamento_bruto'=>0,'total_registros'=>0,'qtd_pendente'=>0,'qtd_pago'=>0,'qtd_cancelado'=>0];
 }
 $total_pendente    = $_dash['total_pendente']    ?? 0;
 $total_pago        = $_dash['total_pago']        ?? 0;

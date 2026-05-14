@@ -1,9 +1,13 @@
 <?php
 /**
  * Webhook Mercado Pago — PIX de pedidos (create_order)
+ * v2.0 — Multi-estabelecimento
  *
- * Recebe notificações de pagamento do Mercado Pago e atualiza
- * o status do pedido na tabela `order`.
+ * URL ÚNICA para todos os estabelecimentos:
+ *   https://ochoppoficial.com.br/webhooks/mercadopago_webhook.php
+ *
+ * O webhook identifica o estabelecimento pelo pedido (order.estabelecimento_id)
+ * e busca o token correto na tabela payment_config (ou mercadopago_config legada).
  *
  * External reference format: CO{order_id}  (ex: CO123)
  * O checkout_id na tabela `order` armazena o payment_id do Mercado Pago.
@@ -11,6 +15,9 @@
 ob_start();
 header('Content-Type: application/json');
 require_once __DIR__ . '/../includes/config.php';
+if (!class_exists('PaymentConfigManager')) {
+    require_once __DIR__ . '/../includes/PaymentConfigManager.php';
+}
 
 $input = file_get_contents('php://input');
 $data  = json_decode($input, true);
@@ -41,9 +48,12 @@ if (!$payment_id) {
 try {
     $conn = getDBConnection();
 
-    // Buscar o pedido pelo checkout_id (= payment_id armazenado em create_order)
+    // ── 1. Buscar o pedido pelo checkout_id (= payment_id do Mercado Pago) ────
     $stmt = $conn->prepare(
-        "SELECT id, checkout_status FROM `order` WHERE checkout_id = ? LIMIT 1"
+        "SELECT id, checkout_status, estabelecimento_id
+         FROM `order`
+         WHERE checkout_id = ?
+         LIMIT 1"
     );
     $stmt->execute([(string) $payment_id]);
     $order = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -59,22 +69,70 @@ try {
         exit;
     }
 
-    // Consultar status real na API do Mercado Pago para não depender só do webhook
-    $cfg_stmt = $conn->prepare(
-        "SELECT access_token FROM mercadopago_config WHERE status = 1 LIMIT 1"
-    );
-    $cfg_stmt->execute();
-    $cfg = $cfg_stmt->fetch(PDO::FETCH_ASSOC);
+    $estabelecimento_id = (int) ($order['estabelecimento_id'] ?? 0);
 
+    // ── 2. Buscar access_token do estabelecimento correto ─────────────────────
+    //    Prioridade: payment_config → mercadopago_config → qualquer ativo
+    $access_token = null;
+
+    // 2a. Tentar PaymentConfigManager (payment_config multi-estabelecimento)
+    if ($estabelecimento_id) {
+        $cfg_mgr = PaymentConfigManager::getConfig($estabelecimento_id);
+        if (!empty($cfg_mgr['mp_access_token'])) {
+            $access_token = $cfg_mgr['mp_access_token'];
+            Logger::info('MercadoPago Webhook - token via PaymentConfigManager', [
+                'estabelecimento_id' => $estabelecimento_id,
+            ]);
+        }
+    }
+
+    // 2b. Fallback: tabela mercadopago_config pelo estabelecimento do pedido
+    if (!$access_token && $estabelecimento_id) {
+        try {
+            $cfg_stmt = $conn->prepare(
+                "SELECT access_token FROM mercadopago_config
+                 WHERE estabelecimento_id = ? AND status = 1
+                 LIMIT 1"
+            );
+            $cfg_stmt->execute([$estabelecimento_id]);
+            $cfg = $cfg_stmt->fetch(PDO::FETCH_ASSOC);
+            if ($cfg && !empty($cfg['access_token'])) {
+                $access_token = $cfg['access_token'];
+                Logger::info('MercadoPago Webhook - token via mercadopago_config (estab)', [
+                    'estabelecimento_id' => $estabelecimento_id,
+                ]);
+            }
+        } catch (\Exception $e) { /* tabela pode não existir */ }
+    }
+
+    // 2c. Fallback final: qualquer config ativa (compatibilidade com instalações
+    //     que ainda têm apenas um estabelecimento)
+    if (!$access_token) {
+        try {
+            $cfg_stmt = $conn->query(
+                "SELECT access_token FROM mercadopago_config WHERE status = 1 LIMIT 1"
+            );
+            $cfg = $cfg_stmt->fetch(PDO::FETCH_ASSOC);
+            if ($cfg && !empty($cfg['access_token'])) {
+                $access_token = $cfg['access_token'];
+                Logger::warning('MercadoPago Webhook - token via fallback generico (sem estab)', [
+                    'payment_id'         => $payment_id,
+                    'estabelecimento_id' => $estabelecimento_id,
+                ]);
+            }
+        } catch (\Exception $e) { /* ignora */ }
+    }
+
+    // ── 3. Consultar status real na API do Mercado Pago ───────────────────────
     $new_status = 'PENDING';
 
-    if ($cfg) {
+    if ($access_token) {
         $ch = curl_init("https://api.mercadopago.com/v1/payments/{$payment_id}");
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 15,
             CURLOPT_HTTPHEADER     => [
-                'Authorization: Bearer ' . $cfg['access_token'],
+                'Authorization: Bearer ' . $access_token,
                 'Content-Type: application/json',
             ],
         ]);
@@ -96,26 +154,40 @@ try {
             $new_status = $mp_status_map[$payment['status'] ?? ''] ?? 'PENDING';
 
             Logger::info('MercadoPago Webhook - status consultado na API', [
-                'payment_id' => $payment_id,
-                'mp_status'  => $payment['status'] ?? 'unknown',
-                'new_status' => $new_status,
+                'payment_id'         => $payment_id,
+                'estabelecimento_id' => $estabelecimento_id,
+                'mp_status'          => $payment['status'] ?? 'unknown',
+                'new_status'         => $new_status,
+            ]);
+        } else {
+            Logger::warning('MercadoPago Webhook - API retornou HTTP ' . $mp_code, [
+                'payment_id'         => $payment_id,
+                'estabelecimento_id' => $estabelecimento_id,
             ]);
         }
     } else {
-        // Sem acesso à API, usar a ação do webhook como heurística
+        // Sem token: usar a ação do webhook como heurística
         $action = $data['action'] ?? '';
         if ($action === 'payment.updated') {
             $new_status = 'PAID';
         }
+        Logger::warning('MercadoPago Webhook - sem access_token, usando heuristica', [
+            'payment_id'         => $payment_id,
+            'estabelecimento_id' => $estabelecimento_id,
+            'action'             => $action,
+            'new_status'         => $new_status,
+        ]);
     }
 
+    // ── 4. Atualizar status do pedido ─────────────────────────────────────────
     $conn->prepare("UPDATE `order` SET checkout_status = ? WHERE id = ?")
          ->execute([$new_status, $order['id']]);
 
     Logger::info('MercadoPago Webhook - pedido atualizado', [
-        'order_id'   => $order['id'],
-        'payment_id' => $payment_id,
-        'new_status' => $new_status,
+        'order_id'           => $order['id'],
+        'estabelecimento_id' => $estabelecimento_id,
+        'payment_id'         => $payment_id,
+        'new_status'         => $new_status,
     ]);
 
 } catch (\Exception $e) {

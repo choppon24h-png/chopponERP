@@ -33,14 +33,20 @@ class MercadoPagoPix {
                 : 'https://ochoppoficial.com.br/webhooks/mercadopago_webhook.php';
 
             if (class_exists('Logger')) {
-                Logger::info('MercadoPagoPix: config carregada via PaymentConfigManager', [
+                Logger::info('MercadoPagoPix: token MP carregado via PaymentConfigManager', [
                     'estabelecimento_id' => $this->estabelecimentoId,
+                    'token_prefix'       => substr($this->accessToken, 0, 12) . '...',
                 ]);
             }
             return;
         }
 
-        // Fallback: buscar na tabela mercadopago_config legada
+        // PaymentConfigManager não encontrou mp_access_token — tentar mercadopago_config diretamente
+        if (class_exists('Logger')) {
+            Logger::warning('MercadoPagoPix: PaymentConfigManager sem token MP, tentando mercadopago_config direta', [
+                'estabelecimento_id' => $this->estabelecimentoId,
+            ]);
+        }
         $conn = getDBConnection();
         $stmt = $conn->prepare(
             "SELECT access_token, webhook_url FROM mercadopago_config
@@ -50,8 +56,14 @@ class MercadoPagoPix {
         $cfg = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$cfg || empty($cfg['access_token'])) {
+            if (class_exists('Logger')) {
+                Logger::error('MercadoPagoPix: sem token MP para este estabelecimento', [
+                    'estabelecimento_id' => $this->estabelecimentoId,
+                ]);
+            }
             throw new \RuntimeException(
-                "MercadoPago nao configurado para estabelecimento_id={$this->estabelecimentoId}"
+                "MercadoPago nao configurado para estabelecimento_id={$this->estabelecimentoId}. "
+                . "Cadastre as credenciais em Admin > Pagamentos."
             );
         }
 
@@ -59,6 +71,12 @@ class MercadoPagoPix {
         $this->webhookUrl  = !empty($cfg['webhook_url'])
             ? $cfg['webhook_url']
             : 'https://ochoppoficial.com.br/webhooks/mercadopago_webhook.php';
+        if (class_exists('Logger')) {
+            Logger::info('MercadoPagoPix: token MP carregado via mercadopago_config legada', [
+                'estabelecimento_id' => $this->estabelecimentoId,
+                'token_prefix'       => substr($this->accessToken, 0, 12) . '...',
+            ]);
+        }
     }
 
     /**

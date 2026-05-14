@@ -189,8 +189,8 @@ try {
         'valor'          => $input['valor'],
     ]);
 
-    // ── Instanciar SumUp ──────────────────────────────────────────────────────
-    $sumup = new SumUpIntegration();
+    // ── Instanciar SumUp com credenciais do estabelecimento ─────────────────
+    $sumup = new SumUpIntegration($tap['estabelecimento_id'] ?? null);
 
     $order_data = [
         'id'        => $order_id,

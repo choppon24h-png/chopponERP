@@ -46,6 +46,7 @@ ob_start();
 header('Content-Type: application/json; charset=utf-8');
 require_once '../includes/config.php';
 require_once '../includes/auth.php';
+require_once '../includes/PaymentConfigManager.php';
 
 // Verificar autenticação
 if (!isLoggedIn()) {
@@ -58,15 +59,18 @@ if (!isLoggedIn()) {
 $conn          = getDBConnection();
 $action        = $_GET['action'] ?? $_POST['action'] ?? 'list';
 
-// ─── Obter token e merchant_code do banco (prioridade) ou constante ──────────
-$stmt_pay = $conn->query("SELECT token_sumup, affiliate_key, merchant_code FROM payment LIMIT 1");
-$payment_cfg = $stmt_pay->fetch(PDO::FETCH_ASSOC);
+// ─── Obter token e merchant_code via PaymentConfigManager (multi-estabelecimento) ───
+// O estabelecimento_id pode vir do POST (ações específicas) ou da sessão do admin
+$_req_estab_id = !empty($_POST['estabelecimento_id']) ? intval($_POST['estabelecimento_id']) : null;
+if (!$_req_estab_id && function_exists('getEstabelecimentoId')) {
+    $_req_estab_id = intval(getEstabelecimentoId()) ?: null;
+}
 
-// Token: prioridade ao salvo no banco, fallback à constante
-$sumup_token   = !empty($payment_cfg['token_sumup'])   ? $payment_cfg['token_sumup']   : SUMUP_TOKEN;
-$affiliate_key = !empty($payment_cfg['affiliate_key']) ? $payment_cfg['affiliate_key'] : '';
-// merchant_code: se salvo no banco, usa; caso contrário usa a constante
-$merchant_code = !empty($payment_cfg['merchant_code']) ? $payment_cfg['merchant_code'] : SUMUP_MERCHANT_CODE;
+$_pay_cfg = PaymentConfigManager::getConfig($_req_estab_id);
+
+$sumup_token   = $_pay_cfg['sumup_token']        ?? SUMUP_TOKEN;
+$affiliate_key = $_pay_cfg['sumup_affiliate_key'] ?? '';
+$merchant_code = $_pay_cfg['sumup_merchant_code'] ?? SUMUP_MERCHANT_CODE;
 
 function paymentLog(string $message, array $context = []): void {
     if (class_exists('Logger') && method_exists('Logger', 'payment')) {

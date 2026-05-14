@@ -1,13 +1,15 @@
 <?php
 /**
- * Configurações de Pagamento + Gestão de Leitoras SumUp Solo
- * v2.0 — Botão "Excluir Todas", Seleção de Estabelecimento, Diagnóstico Offline melhorado
+ * Configurações de Pagamento SumUp — ChoppOnTap
+ * v3.0 — Multi-estabelecimento: cada unidade tem suas próprias credenciais SumUp
+ *         Usa tabela payment_config (com fallback para tabela payment legada)
  */
 $page_title   = 'Configurações de Pagamento';
 $current_page = 'pagamentos';
 
 require_once '../includes/config.php';
 require_once '../includes/auth.php';
+require_once '../includes/PaymentConfigManager.php';
 
 requireAuth();
 
@@ -15,16 +17,33 @@ $conn    = getDBConnection();
 $success = '';
 $error   = '';
 
-// ─── Garantir colunas extras na tabela payment ────────────────
-try {
-    $conn->exec("ALTER TABLE `payment` ADD COLUMN IF NOT EXISTS `estabelecimento_id` BIGINT UNSIGNED NULL DEFAULT NULL AFTER `debit`");
-    $conn->exec("ALTER TABLE `payment` ADD COLUMN IF NOT EXISTS `affiliate_key` VARCHAR(255) NULL DEFAULT NULL AFTER `estabelecimento_id`");
-} catch (Exception $e) { /* ignora se já existir */ }
+// ─── Garantir que a tabela sumup_readers existe com coluna estabelecimento_id ─
+$conn->exec("CREATE TABLE IF NOT EXISTS `sumup_readers` (
+    `id`               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `reader_id`        VARCHAR(60)     NOT NULL,
+    `name`             VARCHAR(255)    NOT NULL,
+    `serial`           VARCHAR(100)    NULL DEFAULT NULL,
+    `model`            VARCHAR(50)     NULL DEFAULT NULL,
+    `status`           VARCHAR(30)     NOT NULL DEFAULT 'processing',
+    `battery_level`    INT             NULL DEFAULT NULL,
+    `connection_type`  VARCHAR(30)     NULL DEFAULT NULL,
+    `firmware_version` VARCHAR(50)     NULL DEFAULT NULL,
+    `last_activity`    DATETIME        NULL DEFAULT NULL,
+    `estabelecimento_id` BIGINT UNSIGNED NULL DEFAULT NULL,
+    `created_at`       TIMESTAMP       NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at`       TIMESTAMP       NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `reader_id_unique` (`reader_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_general_ci");
 
-// ─── Garantir colunas extras na tabela sumup_readers ─────────
+// Adicionar coluna estabelecimento_id se não existir (migração segura)
 try {
-    $conn->exec("ALTER TABLE `sumup_readers` ADD COLUMN IF NOT EXISTS `estabelecimento_id` BIGINT UNSIGNED NULL DEFAULT NULL AFTER `last_activity`");
-} catch (Exception $e) { /* ignora se já existir */ }
+    $col_check = $conn->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sumup_readers' AND COLUMN_NAME = 'estabelecimento_id'");
+    if ((int)$col_check->fetchColumn() === 0) {
+        $conn->exec("ALTER TABLE `sumup_readers` ADD COLUMN `estabelecimento_id` BIGINT UNSIGNED NULL DEFAULT NULL AFTER `last_activity`");
+    }
+} catch (Exception $e) { /* ignora */ }
 
 // ─── Buscar estabelecimentos disponíveis ─────────────────────
 if (isAdminGeral()) {
@@ -41,90 +60,70 @@ if (isAdminGeral()) {
 }
 $estabelecimentos = $stmt_estabs->fetchAll(PDO::FETCH_ASSOC);
 
+// ─── Determinar estabelecimento selecionado ───────────────────
+// Admin pode escolher via GET/POST; usuário de estabelecimento usa o seu próprio
+if (isAdminGeral()) {
+    $estab_selecionado_id = !empty($_GET['estab']) ? intval($_GET['estab']) : (!empty($estabelecimentos) ? $estabelecimentos[0]['id'] : null);
+} else {
+    $estab_selecionado_id = intval(getEstabelecimentoId());
+}
+
 // ─── Processar salvar configuração de pagamento ───────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_payment'])) {
-    $token_sumup        = sanitize($_POST['token_sumup']);
-    $affiliate_key      = sanitize($_POST['affiliate_key'] ?? '');
-    $affiliate_app_id   = sanitize($_POST['affiliate_app_id'] ?? '');  // ← NOVO
-    $estabelecimento_id = !empty($_POST['estabelecimento_id']) ? intval($_POST['estabelecimento_id']) : null;
-    $pix                = isset($_POST['pix'])    ? 1 : 0;
-    $credit             = isset($_POST['credit']) ? 1 : 0;
-    $debit              = isset($_POST['debit'])  ? 1 : 0;
+    $post_estab_id = !empty($_POST['estabelecimento_id']) ? intval($_POST['estabelecimento_id']) : $estab_selecionado_id;
 
-    // ── Migração automática: adicionar coluna affiliate_app_id se não existir ──
-    // NOTA: MySQL 5.7 (HostGator) não suporta "ADD COLUMN IF NOT EXISTS".
-    // Usamos try/catch capturando o erro 1060 (Duplicate column name).
-    try {
-        $conn->exec("ALTER TABLE `payment` ADD COLUMN `affiliate_app_id` VARCHAR(120) NULL DEFAULT NULL COMMENT 'App Identifier da Affiliate Key SumUp'");
-    } catch (PDOException $e) {
-        // Erro 1060 = coluna já existe — ignorar. Qualquer outro erro também ignora (não bloqueia o save).
+    // Segurança: usuário de estabelecimento só pode salvar para o seu próprio
+    if (!isAdminGeral()) {
+        $post_estab_id = intval(getEstabelecimentoId());
     }
 
-    // ── Verificar se merchant_code também existe (coluna adicionada em versões anteriores) ──
-    try {
-        $conn->exec("ALTER TABLE `payment` ADD COLUMN `merchant_code` VARCHAR(50) NULL DEFAULT NULL COMMENT 'Merchant Code SumUp'");
-    } catch (PDOException $e) { /* já existe */ }
-
-    $stmt     = $conn->query("SELECT id FROM payment LIMIT 1");
-    $existing = $stmt->fetch();
-
-    try {
-        if ($existing) {
-            $stmt = $conn->prepare("UPDATE payment SET token_sumup = ?, affiliate_key = ?, affiliate_app_id = ?, estabelecimento_id = ?, pix = ?, credit = ?, debit = ? WHERE id = ?");
-            if ($stmt->execute([$token_sumup, $affiliate_key ?: null, $affiliate_app_id ?: null, $estabelecimento_id, $pix, $credit, $debit, $existing['id']])) {
-                $success = 'Configurações atualizadas com sucesso!';
-            } else {
-                $error = 'Erro ao atualizar configurações.';
-            }
-        } else {
-            $stmt = $conn->prepare("INSERT INTO payment (token_sumup, affiliate_key, affiliate_app_id, estabelecimento_id, pix, credit, debit) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            if ($stmt->execute([$token_sumup, $affiliate_key ?: null, $affiliate_app_id ?: null, $estabelecimento_id, $pix, $credit, $debit])) {
-                $success = 'Configurações salvas com sucesso!';
-            } else {
-                $error = 'Erro ao salvar configurações.';
-            }
+    if (!$post_estab_id) {
+        $error = 'Selecione um estabelecimento antes de salvar.';
+    } else {
+        $mp_ambiente_val = in_array($_POST['mp_ambiente'] ?? '', ['sandbox','production']) ? $_POST['mp_ambiente'] : 'production';
+        $data = [
+            'sumup_token'            => sanitize($_POST['sumup_token']            ?? ''),
+            'sumup_affiliate_key'    => sanitize($_POST['sumup_affiliate_key']    ?? ''),
+            'sumup_affiliate_app_id' => sanitize($_POST['sumup_affiliate_app_id'] ?? ''),
+            'sumup_merchant_code'    => sanitize($_POST['sumup_merchant_code']    ?? ''),
+            'sumup_webhook_secret'   => sanitize($_POST['sumup_webhook_secret']   ?? ''),
+            'pix'                    => isset($_POST['pix'])    ? 1 : 0,
+            'credit'                 => isset($_POST['credit']) ? 1 : 0,
+            'debit'                  => isset($_POST['debit'])  ? 1 : 0,
+            // Mercado Pago
+            'mp_access_token'        => sanitize($_POST['mp_access_token']  ?? ''),
+            'mp_public_key'          => sanitize($_POST['mp_public_key']    ?? ''),
+            'mp_webhook_url'         => sanitize($_POST['mp_webhook_url']   ?? ''),
+            'mp_ambiente'            => $mp_ambiente_val,
+        ];
+        // Limpar strings vazias para NULL
+        foreach (['sumup_token','sumup_affiliate_key','sumup_affiliate_app_id','sumup_merchant_code','sumup_webhook_secret',
+                  'mp_access_token','mp_public_key','mp_webhook_url'] as $f) {
+            if ($data[$f] === '') $data[$f] = null;
         }
-    } catch (PDOException $e) {
-        // Se ainda falhar (ex: coluna não existe por algum motivo), tenta sem affiliate_app_id
-        try {
-            if ($existing) {
-                $stmt = $conn->prepare("UPDATE payment SET token_sumup = ?, affiliate_key = ?, estabelecimento_id = ?, pix = ?, credit = ?, debit = ? WHERE id = ?");
-                $stmt->execute([$token_sumup, $affiliate_key ?: null, $estabelecimento_id, $pix, $credit, $debit, $existing['id']]);
-            } else {
-                $stmt = $conn->prepare("INSERT INTO payment (token_sumup, affiliate_key, estabelecimento_id, pix, credit, debit) VALUES (?, ?, ?, ?, ?, ?)");
-                $stmt->execute([$token_sumup, $affiliate_key ?: null, $estabelecimento_id, $pix, $credit, $debit]);
-            }
-            $success = 'Configurações salvas (sem affiliate_app_id — execute o SQL de migração no phpMyAdmin).';
-        } catch (PDOException $e2) {
-            $error = 'Erro ao salvar: ' . $e2->getMessage();
+
+        if (PaymentConfigManager::saveConfig($post_estab_id, $data)) {
+            $success = 'Configurações salvas com sucesso!';
+            $estab_selecionado_id = $post_estab_id;
+        } else {
+            $error = 'Erro ao salvar configurações. Verifique se a migração SQL foi executada.';
         }
     }
 }
 
-// ─── Buscar configurações atuais ─────────────────────────────
-$stmt    = $conn->query("SELECT * FROM payment LIMIT 1");
-$payment = $stmt->fetch();
+// ─── Carregar configuração do estabelecimento selecionado ─────
+$payment = $estab_selecionado_id ? PaymentConfigManager::getConfig($estab_selecionado_id) : [];
+
+// ─── Buscar nome do estabelecimento selecionado ───────────────
+$estab_selecionado_nome = '';
+foreach ($estabelecimentos as $e) {
+    if ($e['id'] == $estab_selecionado_id) {
+        $estab_selecionado_nome = $e['name'];
+        break;
+    }
+}
 
 // ─── Buscar leitoras cadastradas ─────────────────────────────
-$conn->exec("CREATE TABLE IF NOT EXISTS `sumup_readers` (
-    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `reader_id` VARCHAR(60) NOT NULL,
-    `name` VARCHAR(255) NOT NULL,
-    `serial` VARCHAR(100) NULL DEFAULT NULL,
-    `model` VARCHAR(50) NULL DEFAULT NULL,
-    `status` VARCHAR(30) NOT NULL DEFAULT 'processing',
-    `battery_level` INT NULL DEFAULT NULL,
-    `connection_type` VARCHAR(30) NULL DEFAULT NULL,
-    `firmware_version` VARCHAR(50) NULL DEFAULT NULL,
-    `last_activity` DATETIME NULL DEFAULT NULL,
-    `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (`id`),
-    UNIQUE KEY `reader_id_unique` (`reader_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
-// Buscar leitoras com nome do estabelecimento vinculado
-// REGRA: admin geral vê todas; usuário de estabelecimento vê apenas as do seu estabelecimento
 if (isAdminGeral()) {
     $stmt_readers = $conn->query("
         SELECT sr.*, e.name AS estabelecimento_nome, e.id AS estab_id
@@ -149,14 +148,41 @@ require_once '../includes/header.php';
 ?>
 
 <div class="page-header">
-    <h1>Configurações de Pagamento</h1>
+    <h1><i class="fas fa-credit-card"></i> Configurações de Pagamento SumUp</h1>
 </div>
 
 <?php if ($success): ?>
-    <div class="alert alert-success"><?php echo $success; ?></div>
+    <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo htmlspecialchars($success); ?></div>
 <?php endif; ?>
 <?php if ($error): ?>
-    <div class="alert alert-danger"><?php echo $error; ?></div>
+    <div class="alert alert-danger"><i class="fas fa-times-circle"></i> <?php echo htmlspecialchars($error); ?></div>
+<?php endif; ?>
+
+<!-- ════════════════════════════════════════════════════════════
+     SELETOR DE ESTABELECIMENTO (Admin Geral)
+     ════════════════════════════════════════════════════════════ -->
+<?php if (isAdminGeral() && count($estabelecimentos) > 1): ?>
+<div class="card" style="margin-bottom:20px;">
+    <div class="card-body" style="padding:14px 20px;">
+        <form method="GET" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <label style="margin:0;font-weight:600;white-space:nowrap;">
+                <i class="fas fa-store"></i> Visualizando:
+            </label>
+            <select name="estab" class="form-control" style="max-width:320px;" onchange="this.form.submit()">
+                <?php foreach ($estabelecimentos as $e): ?>
+                    <option value="<?php echo $e['id']; ?>" <?php echo $e['id'] == $estab_selecionado_id ? 'selected' : ''; ?>>
+                        #<?php echo $e['id']; ?> — <?php echo htmlspecialchars($e['name']); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <?php if (!empty($estab_selecionado_nome)): ?>
+                <span class="badge badge-primary" style="font-size:13px;padding:6px 12px;">
+                    <?php echo htmlspecialchars($estab_selecionado_nome); ?>
+                </span>
+            <?php endif; ?>
+        </form>
+    </div>
+</div>
 <?php endif; ?>
 
 <!-- ════════════════════════════════════════════════════════════
@@ -166,56 +192,62 @@ require_once '../includes/header.php';
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <h4><i class="fas fa-key"></i> Integração SumUp</h4>
+                <h4><i class="fas fa-key"></i> Integração SumUp
+                    <?php if (!empty($estab_selecionado_nome)): ?>
+                        <small style="font-weight:normal;font-size:13px;color:var(--gray-600);">
+                            — <?php echo htmlspecialchars($estab_selecionado_nome); ?>
+                        </small>
+                    <?php endif; ?>
+                </h4>
             </div>
             <div class="card-body">
+                <?php if (empty($estabelecimentos)): ?>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Nenhum estabelecimento disponível. Cadastre um estabelecimento primeiro.
+                    </div>
+                <?php else: ?>
                 <form method="POST">
                     <input type="hidden" name="save_payment" value="1">
+                    <input type="hidden" name="estabelecimento_id" value="<?php echo $estab_selecionado_id; ?>">
 
-                    <!-- Seleção de Estabelecimento -->
+                    <?php if (isAdminGeral() && count($estabelecimentos) === 1): ?>
                     <div class="form-group">
-                        <label for="estabelecimento_id">
-                            <i class="fas fa-store"></i> Estabelecimento Vinculado
-                        </label>
-                        <select name="estabelecimento_id" id="estabelecimento_id" class="form-control">
-                            <option value="">— Selecione o Estabelecimento —</option>
-                            <?php foreach ($estabelecimentos as $estab): ?>
-                                <option value="<?php echo $estab['id']; ?>"
-                                    <?php echo ($payment['estabelecimento_id'] ?? '') == $estab['id'] ? 'selected' : ''; ?>>
-                                    #<?php echo $estab['id']; ?> — <?php echo htmlspecialchars($estab['name']); ?>
-                                    <?php if (!empty($estab['document'])): ?>
-                                        (<?php echo htmlspecialchars($estab['document']); ?>)
-                                    <?php endif; ?>
+                        <label><i class="fas fa-store"></i> Estabelecimento</label>
+                        <select name="estabelecimento_id" class="form-control">
+                            <?php foreach ($estabelecimentos as $e): ?>
+                                <option value="<?php echo $e['id']; ?>" <?php echo $e['id'] == $estab_selecionado_id ? 'selected' : ''; ?>>
+                                    #<?php echo $e['id']; ?> — <?php echo htmlspecialchars($e['name']); ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
-                        <small style="color:var(--gray-600);">
-                            Vincule estas configurações de pagamento a um estabelecimento específico.
-                        </small>
                     </div>
+                    <?php endif; ?>
 
                     <div class="form-group">
-                        <label for="token_sumup">Token SumUp (API Key) *</label>
+                        <label for="sumup_token">
+                            <i class="fas fa-key"></i> Token SumUp (API Key) *
+                        </label>
                         <input type="text"
-                               name="token_sumup"
-                               id="token_sumup"
+                               name="sumup_token"
+                               id="sumup_token"
                                class="form-control"
-                               value="<?php echo htmlspecialchars($payment['token_sumup'] ?? ''); ?>"
-                               required>
+                               value="<?php echo htmlspecialchars($payment['sumup_token'] ?? ''); ?>"
+                               placeholder="sup_sk_...">
                         <small style="color:var(--gray-600);">Token de autenticação da API SumUp (sup_sk_...)</small>
                     </div>
 
                     <div class="form-group">
-                        <label for="affiliate_key">
+                        <label for="sumup_affiliate_key">
                             <i class="fas fa-link"></i> Affiliate Key
                             <span style="font-size:11px;color:#e67e22;font-weight:normal;">(obrigatório para Cloud API)</span>
                         </label>
                         <input type="text"
-                               name="affiliate_key"
-                               id="affiliate_key"
+                               name="sumup_affiliate_key"
+                               id="sumup_affiliate_key"
                                class="form-control"
-                               value="<?php echo htmlspecialchars($payment['affiliate_key'] ?? ''); ?>"
-                               placeholder="Ex: sup_afk_...">
+                               value="<?php echo htmlspecialchars($payment['sumup_affiliate_key'] ?? ''); ?>"
+                               placeholder="sup_afk_...">
                         <small style="color:var(--gray-600);">
                             Chave de afiliado obrigatória para transações via Cloud API (leitoras SumUp Solo).
                             Crie em: <a href="https://developer.sumup.com" target="_blank">developer.sumup.com</a> → Settings → For Developers → Toolkit → Affiliate Keys.
@@ -223,20 +255,50 @@ require_once '../includes/header.php';
                     </div>
 
                     <div class="form-group">
-                        <label for="affiliate_app_id">
+                        <label for="sumup_affiliate_app_id">
                             <i class="fas fa-fingerprint"></i> Affiliate App ID
                             <span style="font-size:11px;color:#e74c3c;font-weight:bold;">(obrigatório — sem isso o checkout retorna erro 422)</span>
                         </label>
                         <input type="text"
-                               name="affiliate_app_id"
-                               id="affiliate_app_id"
+                               name="sumup_affiliate_app_id"
+                               id="sumup_affiliate_app_id"
                                class="form-control"
-                               value="<?php echo htmlspecialchars($payment['affiliate_app_id'] ?? ''); ?>"
+                               value="<?php echo htmlspecialchars($payment['sumup_affiliate_app_id'] ?? ''); ?>"
                                placeholder="Ex: com.ochoppo.app  ou  ochoppo.com.br">
                         <small style="color:var(--gray-600);">
                             <strong>Application Identifier</strong> cadastrado na sua Affiliate Key.
                             Para criar: <a href="https://me.sumup.com" target="_blank">me.sumup.com</a> → Settings → For Developers → Toolkit → Affiliate Keys → campo "Application identifier".
-                            Pode ser qualquer string única (ex: <code>com.ochoppo.erp</code> ou <code>ochoppoficial.com.br</code>).
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="sumup_merchant_code">
+                            <i class="fas fa-barcode"></i> Merchant Code
+                        </label>
+                        <input type="text"
+                               name="sumup_merchant_code"
+                               id="sumup_merchant_code"
+                               class="form-control"
+                               value="<?php echo htmlspecialchars($payment['sumup_merchant_code'] ?? ''); ?>"
+                               placeholder="Ex: MCTSYDUE">
+                        <small style="color:var(--gray-600);">
+                            Código do merchant SumUp. Encontrado em: <a href="https://me.sumup.com" target="_blank">me.sumup.com</a> → Account → Profile.
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="sumup_webhook_secret">
+                            <i class="fas fa-shield-alt"></i> Webhook Secret
+                            <span style="font-size:11px;color:var(--gray-600);font-weight:normal;">(opcional)</span>
+                        </label>
+                        <input type="text"
+                               name="sumup_webhook_secret"
+                               id="sumup_webhook_secret"
+                               class="form-control"
+                               value="<?php echo htmlspecialchars($payment['sumup_webhook_secret'] ?? ''); ?>"
+                               placeholder="Secret para validar assinatura dos webhooks SumUp">
+                        <small style="color:var(--gray-600);">
+                            Configure no painel SumUp ao registrar o webhook. Usado para validar a autenticidade das notificações.
                         </small>
                     </div>
 
@@ -259,12 +321,63 @@ require_once '../includes/header.php';
                         </div>
                     </div>
 
+                    <!-- ─── Seção Mercado Pago ─── -->
+                    <hr style="margin:20px 0;">
+                    <h5 style="color:#009ee3;margin-bottom:14px;"><i class="fas fa-dollar-sign"></i> Mercado Pago (PIX)</h5>
+                    <div class="form-group">
+                        <label for="mp_access_token">
+                            <i class="fas fa-key"></i> Access Token
+                            <span style="font-size:11px;color:#e67e22;font-weight:normal;">(obrigatório para PIX)</span>
+                        </label>
+                        <input type="text"
+                               name="mp_access_token"
+                               id="mp_access_token"
+                               class="form-control"
+                               value="<?php echo htmlspecialchars($payment['mp_access_token'] ?? ''); ?>"
+                               placeholder="APP_USR-...">
+                        <small style="color:var(--gray-600);">Token de acesso do Mercado Pago. Obtenha em: <a href="https://www.mercadopago.com.br/developers/panel" target="_blank">developers.mercadopago.com</a> &rarr; Suas integrações &rarr; Credenciais de produção.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="mp_public_key">
+                            <i class="fas fa-unlock"></i> Public Key
+                            <span style="font-size:11px;color:var(--gray-600);font-weight:normal;">(opcional)</span>
+                        </label>
+                        <input type="text"
+                               name="mp_public_key"
+                               id="mp_public_key"
+                               class="form-control"
+                               value="<?php echo htmlspecialchars($payment['mp_public_key'] ?? ''); ?>"
+                               placeholder="APP_USR-...">
+                    </div>
+                    <div class="form-group">
+                        <label for="mp_webhook_url">
+                            <i class="fas fa-link"></i> Webhook URL (MP)
+                            <span style="font-size:11px;color:var(--gray-600);font-weight:normal;">(opcional)</span>
+                        </label>
+                        <input type="text"
+                               name="mp_webhook_url"
+                               id="mp_webhook_url"
+                               class="form-control"
+                               value="<?php echo htmlspecialchars($payment['mp_webhook_url'] ?? ''); ?>"
+                               placeholder="https://seusite.com.br/webhooks/mercadopago_webhook.php">
+                        <small style="color:var(--gray-600);">URL para receber notificações de pagamento PIX aprovado. Configure no painel do Mercado Pago.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="mp_ambiente">
+                            <i class="fas fa-server"></i> Ambiente
+                        </label>
+                        <select name="mp_ambiente" id="mp_ambiente" class="form-control">
+                            <option value="production" <?php echo ($payment['mp_ambiente'] ?? 'production') === 'production' ? 'selected' : ''; ?>>Produção</option>
+                            <option value="sandbox" <?php echo ($payment['mp_ambiente'] ?? '') === 'sandbox' ? 'selected' : ''; ?>>Sandbox (testes)</option>
+                        </select>
+                    </div>
                     <div class="form-group">
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-save"></i> Salvar Configurações
                         </button>
                     </div>
                 </form>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -275,7 +388,10 @@ require_once '../includes/header.php';
                 <h4><i class="fas fa-info-circle"></i> Informações</h4>
             </div>
             <div class="card-body">
-                <p><strong>Merchant Code:</strong> <?php echo SUMUP_MERCHANT_CODE; ?></p>
+                <?php
+                $mc = !empty($payment['sumup_merchant_code']) ? $payment['sumup_merchant_code'] : SUMUP_MERCHANT_CODE;
+                ?>
+                <p><strong>Merchant Code:</strong> <code><?php echo htmlspecialchars($mc); ?></code></p>
                 <p><strong>Webhook URL:</strong></p>
                 <code style="font-size:11px;word-break:break-all;">
                     <?php echo SITE_URL; ?>/api/webhook.php
@@ -290,6 +406,14 @@ require_once '../includes/header.php';
                     <strong>Affiliate Key obrigatória</strong> para transações via Cloud API.
                     Sem ela, checkouts serão rejeitados pela SumUp.
                 </div>
+                <?php if (isAdminGeral()): ?>
+                <hr>
+                <div style="background:#e8f4fd;border:1px solid #3498db;border-radius:6px;padding:10px;font-size:12px;">
+                    <i class="fas fa-database" style="color:#3498db;"></i>
+                    <strong>Multi-estabelecimento ativo.</strong><br>
+                    Cada unidade tem suas próprias credenciais SumUp armazenadas na tabela <code>payment_config</code>.
+                </div>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -422,52 +546,42 @@ require_once '../includes/header.php';
      MODAL — Nova Leitora
      ════════════════════════════════════════════════════════════ -->
 <div class="modal" id="modalNovaLeitora">
-    <div class="modal-content" style="max-width:540px;">
+    <div class="modal-content" style="max-width:500px;">
         <div class="modal-header">
-            <h3><i class="fas fa-plus-circle"></i> Cadastrar Nova Leitora</h3>
+            <h3><i class="fas fa-plus-circle"></i> Adicionar Nova Leitora</h3>
             <button class="modal-close" onclick="fecharModalNovaLeitora()">&times;</button>
         </div>
         <div class="modal-body">
             <div class="form-group">
-                <label for="inputPairingCode">Código de Pareamento *</label>
-                <input type="text"
-                       id="inputPairingCode"
-                       class="form-control"
-                       placeholder="Ex: A4RZALFHY"
-                       maxlength="9"
-                       style="text-transform:uppercase;font-size:20px;letter-spacing:3px;font-weight:bold;text-align:center;"
-                       oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+                <label for="inputPairingCode">Código de Pareamento (Pairing Code) *</label>
+                <input type="text" id="inputPairingCode" class="form-control"
+                       placeholder="Ex: ABC12345" maxlength="9"
+                       style="text-transform:uppercase;letter-spacing:2px;font-size:18px;font-weight:bold;">
                 <small style="color:var(--gray-600);">
-                    Ligue o SumUp Solo → <em>Connections</em> → <em>Wi-Fi</em> → <em>API</em> → <em>Connect</em>.
-                    O código de 8 ou 9 caracteres aparecerá na tela.
+                    Encontrado no SumUp Solo: <em>Connections → API → Pairing Code</em>. 8 ou 9 caracteres alfanuméricos.
                 </small>
             </div>
             <div class="form-group">
-                <label for="inputNomeLeitora">Nome / Identificação da Unidade</label>
-                <input type="text"
-                       id="inputNomeLeitora"
-                       class="form-control"
-                       placeholder="Ex: TAP 01 ALMEIDA">
-                <small style="color:var(--gray-600);">Nome para identificar esta leitora no sistema.</small>
+                <label for="inputNomeLeitora">Nome da Leitora</label>
+                <input type="text" id="inputNomeLeitora" class="form-control" placeholder="Ex: Caixa 01 — Choperia Centro">
             </div>
             <div class="form-group">
-                <label for="inputEstabNovaLeitora">Estabelecimento (opcional)</label>
+                <label for="inputEstabNovaLeitora">Estabelecimento</label>
                 <select id="inputEstabNovaLeitora" class="form-control">
                     <option value="">— Sem vínculo —</option>
                     <?php foreach ($estabelecimentos as $estab): ?>
-                        <option value="<?php echo $estab['id']; ?>">
+                        <option value="<?php echo $estab['id']; ?>"
+                            <?php echo $estab['id'] == $estab_selecionado_id ? 'selected' : ''; ?>>
                             #<?php echo $estab['id']; ?> — <?php echo htmlspecialchars($estab['name']); ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
             </div>
-
-            <!-- Resultado do teste -->
-            <div id="resultadoTeste" style="display:none;margin-top:16px;padding:14px;border-radius:6px;font-size:13px;"></div>
+            <div id="resultadoTeste" style="display:none;margin-top:12px;"></div>
         </div>
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="fecharModalNovaLeitora()">Cancelar</button>
-            <button class="btn btn-warning" id="btnTestarNova" onclick="testarNovaLeitora()">
+            <button class="btn btn-info" id="btnTestarNova" onclick="testarNovaLeitora()">
                 <i class="fas fa-wifi"></i> Testar Vinculação
             </button>
             <button class="btn btn-success" id="btnGravar" onclick="gravarLeitora()" style="display:none;">
@@ -482,17 +596,16 @@ require_once '../includes/header.php';
      ════════════════════════════════════════════════════════════ -->
 <div class="modal" id="modalExcluir">
     <div class="modal-content" style="max-width:440px;">
-        <div class="modal-header">
-            <h3><i class="fas fa-exclamation-triangle" style="color:#e74c3c;"></i> Confirmar Exclusão</h3>
-            <button class="modal-close" onclick="fecharModalExcluir()">&times;</button>
+        <div class="modal-header" style="background:#c0392b;color:#fff;border-radius:8px 8px 0 0;">
+            <h3 style="color:#fff;"><i class="fas fa-trash"></i> Excluir Leitora</h3>
+            <button class="modal-close" onclick="fecharModalExcluir()" style="color:#fff;">&times;</button>
         </div>
         <div class="modal-body">
-            <p>Tem certeza que deseja excluir a leitora <strong id="nomeExcluir"></strong>?</p>
-            <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:12px;font-size:13px;margin-top:8px;">
+            <p>Confirma a exclusão da leitora <strong id="nomeExcluir"></strong>?</p>
+            <p style="font-size:13px;color:#e74c3c;">
                 <i class="fas fa-exclamation-triangle"></i>
-                <strong>Atenção:</strong> A leitora será desvinculada de todas as TAPs e o SumUp Solo exibirá um novo código de pareamento.
-                Para completar a desvinculação, acesse o dispositivo físico: <em>Connections → API → Disconnect</em>.
-            </div>
+                Esta ação desvinculará a leitora da Cloud API SumUp e a removerá do sistema.
+            </p>
         </div>
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="fecharModalExcluir()">Cancelar</button>
@@ -663,7 +776,6 @@ function verificarStatusApi() {
 function abrirModalNovaLeitora() {
     document.getElementById('inputPairingCode').value = '';
     document.getElementById('inputNomeLeitora').value = '';
-    document.getElementById('inputEstabNovaLeitora').value = '';
     document.getElementById('resultadoTeste').style.display = 'none';
     document.getElementById('btnGravar').style.display = 'none';
     dadosNovaLeitora = null;
@@ -757,7 +869,6 @@ function gravarLeitora() {
     adicionarLinhaTabela(dadosNovaLeitora);
     var trVazio = document.getElementById('trVazio');
     if (trVazio) trVazio.remove();
-    // Habilitar botão excluir todas
     document.getElementById('btnExcluirTodas').disabled = false;
     mostrarToast('Leitora gravada com sucesso!', 'success');
 }
@@ -827,7 +938,6 @@ function testarLeitora(readerId, nome) {
             html += '</table>';
             html += '<p style="margin-top:12px;font-size:13px;">' + escHtml(data.mensagem || '') + '</p>';
 
-            // Guia de resolução se offline
             if (!data.online) {
                 html += '<div style="margin-top:12px;padding:10px;background:#fff3cd;border:1px solid #ffc107;border-radius:4px;font-size:12px;">';
                 html += '<strong><i class="fas fa-tools"></i> Como resolver o status OFFLINE:</strong><ul style="margin:6px 0 0 16px;padding:0;">';
@@ -842,7 +952,6 @@ function testarLeitora(readerId, nome) {
             html += '</div>';
             document.getElementById('modalTesteBody').innerHTML = html;
 
-            // Atualizar badge e campos na tabela
             var badge = document.getElementById('badge-' + readerId);
             if (badge) {
                 badge.className = 'badge ' + (data.online ? 'badge-success' : 'badge-warning');
@@ -898,17 +1007,22 @@ function excluirLeitora() {
                     document.getElementById('tbodyLeitoras').innerHTML =
                         '<tr id="trVazio"><td colspan="9" style="text-align:center;color:var(--gray-500);padding:32px;">' +
                         '<i class="fas fa-credit-card" style="font-size:32px;margin-bottom:8px;display:block;"></i>' +
-                        'Nenhuma leitora cadastrada.</td></tr>';
+                        'Nenhuma leitora cadastrada. Clique em <strong>Nova Leitora</strong> para adicionar.' +
+                        '</td></tr>';
                     document.getElementById('btnExcluirTodas').disabled = true;
                 }
             } else {
-                mostrarToast(data.error || 'Erro ao excluir leitora', 'danger');
+                mostrarToast(data.error || 'Erro ao excluir leitora.', 'danger');
             }
         })
-        .catch(function(){ mostrarToast('Erro de comunicação com o servidor', 'danger'); });
+        .catch(function() {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-trash"></i> Excluir';
+            mostrarToast('Erro de comunicação com o servidor.', 'danger');
+        });
 }
 
-// ─── Confirmar exclusão de TODAS as leitoras ─────────────────
+// ─── Confirmar exclusão de TODAS ─────────────────────────────
 function confirmarExcluirTodas() {
     document.getElementById('checkConfirmarTodas').checked = false;
     document.getElementById('btnConfirmarExcluirTodas').disabled = true;
@@ -920,14 +1034,14 @@ function fecharModalExcluirTodas() {
 }
 
 function toggleBtnExcluirTodas() {
-    var check = document.getElementById('checkConfirmarTodas').checked;
-    document.getElementById('btnConfirmarExcluirTodas').disabled = !check;
+    document.getElementById('btnConfirmarExcluirTodas').disabled =
+        !document.getElementById('checkConfirmarTodas').checked;
 }
 
 function excluirTodasLeitoras() {
     var btn = document.getElementById('btnConfirmarExcluirTodas');
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Excluindo todas...';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Excluindo...';
 
     var fd = new FormData();
     fd.append('action', 'delete_all');
@@ -935,28 +1049,22 @@ function excluirTodasLeitoras() {
     fetch(API_URL, { method: 'POST', body: fd })
         .then(function(r){ return r.json(); })
         .then(function(data) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-trash-alt"></i> Sim, Excluir TODAS';
             fecharModalExcluirTodas();
-
             if (data.success) {
                 document.getElementById('tbodyLeitoras').innerHTML =
                     '<tr id="trVazio"><td colspan="9" style="text-align:center;color:var(--gray-500);padding:32px;">' +
                     '<i class="fas fa-credit-card" style="font-size:32px;margin-bottom:8px;display:block;"></i>' +
-                    'Nenhuma leitora cadastrada.</td></tr>';
+                    'Nenhuma leitora cadastrada. Clique em <strong>Nova Leitora</strong> para adicionar.' +
+                    '</td></tr>';
                 document.getElementById('btnExcluirTodas').disabled = true;
-                mostrarToast(
-                    data.mensagem || ('Todas as leitoras foram excluídas. ' + (data.excluidas || 0) + ' leitoras removidas.'),
-                    'success'
-                );
+                mostrarToast(data.mensagem || 'Todas as leitoras foram excluídas.', 'success');
             } else {
-                mostrarToast(data.error || 'Erro ao excluir leitoras', 'danger');
+                mostrarToast(data.error || 'Erro ao excluir leitoras.', 'danger');
             }
         })
-        .catch(function(){
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-trash-alt"></i> Sim, Excluir TODAS';
-            mostrarToast('Erro de comunicação com o servidor', 'danger');
+        .catch(function() {
+            fecharModalExcluirTodas();
+            mostrarToast('Erro de comunicação com o servidor.', 'danger');
         });
 }
 
@@ -964,7 +1072,8 @@ function excluirTodasLeitoras() {
 function abrirModalVincularEstab(readerId, nome, estabAtual) {
     readerIdParaVincular = readerId;
     document.getElementById('nomeLeitVincular').textContent = nome;
-    document.getElementById('selectEstabVincular').value = estabAtual || '';
+    var sel = document.getElementById('selectEstabVincular');
+    sel.value = estabAtual || '';
     document.getElementById('modalVincularEstab').classList.add('active');
 }
 
@@ -981,7 +1090,7 @@ function salvarVinculoEstab() {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
 
     var fd = new FormData();
-    fd.append('action', 'update_estab');
+    fd.append('action', 'link_estab');
     fd.append('reader_id', readerIdParaVincular);
     fd.append('estabelecimento_id', estabId);
 
@@ -991,57 +1100,54 @@ function salvarVinculoEstab() {
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-save"></i> Salvar Vínculo';
             fecharModalVincularEstab();
+
             if (data.success) {
-                var estabEl = document.getElementById('estab-' + readerIdParaVincular);
-                if (estabEl) {
-                    if (data.estabelecimento_nome) {
-                        estabEl.innerHTML = '<span class="badge badge-info" style="font-size:11px;">#' +
-                            escHtml(String(estabId)) + ' ' + escHtml(data.estabelecimento_nome) + '</span>';
+                var cell = document.getElementById('estab-' + readerIdParaVincular);
+                if (cell) {
+                    if (data.estab_nome) {
+                        cell.innerHTML = '<span class="badge badge-info" style="font-size:11px;">#' +
+                            escHtml(String(estabId)) + ' ' + escHtml(data.estab_nome) + '</span>';
                     } else {
-                        estabEl.innerHTML = '<span style="color:var(--gray-500);font-size:12px;">—</span>';
+                        cell.innerHTML = '<span style="color:var(--gray-500);font-size:12px;">—</span>';
                     }
                 }
-                mostrarToast(data.mensagem || 'Vínculo atualizado!', 'success');
+                mostrarToast(data.mensagem || 'Vínculo salvo!', 'success');
             } else {
-                mostrarToast(data.error || 'Erro ao salvar vínculo', 'danger');
+                mostrarToast(data.error || 'Erro ao salvar vínculo.', 'danger');
             }
         })
-        .catch(function(){
+        .catch(function() {
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-save"></i> Salvar Vínculo';
-            mostrarToast('Erro de comunicação com o servidor', 'danger');
+            mostrarToast('Erro de comunicação com o servidor.', 'danger');
         });
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
 function mostrarResultado(tipo, html) {
-    var el    = document.getElementById('resultadoTeste');
-    var cores  = { success: '#d4edda', danger: '#f8d7da', info: '#d1ecf1', warning: '#fff3cd' };
-    var bordas = { success: '#28a745', danger: '#dc3545', info: '#17a2b8', warning: '#ffc107' };
-    el.style.display    = 'block';
-    el.style.background = cores[tipo]  || '#f9f9f9';
-    el.style.border     = '1px solid ' + (bordas[tipo] || '#ccc');
-    el.innerHTML        = html;
+    var el = document.getElementById('resultadoTeste');
+    el.style.display = 'block';
+    el.className = 'alert alert-' + tipo;
+    el.innerHTML = html;
 }
 
 function mostrarToast(msg, tipo) {
     var toast = document.createElement('div');
-    var cores  = { success: '#28a745', danger: '#dc3545', info: '#17a2b8' };
-    toast.style.cssText =
-        'position:fixed;top:20px;right:20px;z-index:9999;padding:12px 20px;border-radius:6px;' +
-        'background:' + (cores[tipo] || '#333') + ';color:#fff;font-size:14px;' +
-        'box-shadow:0 4px 12px rgba(0,0,0,.2);max-width:400px;';
+    toast.className = 'alert alert-' + tipo;
+    toast.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999;min-width:280px;max-width:400px;box-shadow:0 4px 12px rgba(0,0,0,.2);';
     toast.innerHTML = msg;
     document.body.appendChild(toast);
-    setTimeout(function(){ toast.remove(); }, 5000);
+    setTimeout(function(){ toast.remove(); }, 4000);
 }
 
 function escHtml(str) {
     if (!str) return '';
     return String(str)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
-        .replace(/'/g,'&#39;');
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 </script>
 

@@ -56,6 +56,7 @@ require_once '../includes/config.php';
 require_once '../includes/jwt.php';
 require_once '../includes/logger.php';
 require_once '../includes/sumup.php';
+require_once '../includes/PaymentConfigManager.php';
 
 // ── Autenticação JWT ──────────────────────────────────────────────────────────
 $headers = getallheaders();
@@ -163,7 +164,7 @@ try {
             $status_api = consultarStatusMercadoPago($conn, $checkout_id, $estabelecimento_id);
         } else {
             // Consultar SumUp (credit/debit)
-            $status_api = consultarStatusSumUp($checkout_id);
+            $status_api = consultarStatusSumUp($checkout_id, $estabelecimento_id);
         }
 
         Logger::info('verify_checkout - Status retornado pela API', [
@@ -230,14 +231,23 @@ ob_end_flush();
  * @param string $checkout_id
  * @return string|null  Status retornado pela SumUp (ex: "PAID", "PENDING") ou null em falha
  */
-function consultarStatusSumUp($checkout_id) {
+function consultarStatusSumUp($checkout_id, $estabelecimento_id = null) {
+    // Buscar token do estabelecimento via PaymentConfigManager
+    $sumup_token = SUMUP_TOKEN;
+    if ($estabelecimento_id && class_exists('PaymentConfigManager')) {
+        $cfg = PaymentConfigManager::getConfig((int)$estabelecimento_id);
+        if (!empty($cfg['sumup_token'])) {
+            $sumup_token = $cfg['sumup_token'];
+        }
+    }
+
     $url = SUMUP_CHECKOUT_URL . $checkout_id;
 
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Authorization: Bearer ' . SUMUP_TOKEN,
+        'Authorization: Bearer ' . $sumup_token,
         'Content-Type: application/json',
     ]);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
@@ -288,17 +298,27 @@ function consultarStatusSumUp($checkout_id) {
  * @return string|null  Status mapeado (ex: "PAID", "PENDING") ou null em falha
  */
 function consultarStatusMercadoPago($conn, $payment_id, $estabelecimento_id) {
-    // Buscar token do Mercado Pago para o estabelecimento
-    $stmt = $conn->prepare("
-        SELECT access_token 
-        FROM mercadopago_config 
-        WHERE estabelecimento_id = ? AND status = 1 
-        LIMIT 1
-    ");
-    $stmt->execute([$estabelecimento_id]);
-    $config = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$config || empty($config['access_token'])) {
+    // Buscar token do Mercado Pago via PaymentConfigManager (payment_config)
+    $mp_token = null;
+    if (class_exists('PaymentConfigManager')) {
+        $cfg = PaymentConfigManager::getConfig((int)$estabelecimento_id);
+        if (!empty($cfg['mp_access_token'])) {
+            $mp_token = $cfg['mp_access_token'];
+        }
+    }
+    // Fallback: buscar na tabela mercadopago_config legada
+    if (!$mp_token) {
+        $stmt = $conn->prepare("
+            SELECT access_token
+            FROM mercadopago_config
+            WHERE estabelecimento_id = ? AND status = 1
+            LIMIT 1
+        ");
+        $stmt->execute([$estabelecimento_id]);
+        $config = $stmt->fetch(PDO::FETCH_ASSOC);
+        $mp_token = $config['access_token'] ?? null;
+    }
+    if (!$mp_token) {
         Logger::warning('verify_checkout consultarStatusMercadoPago - config não encontrada', [
             'estabelecimento_id' => $estabelecimento_id,
             'payment_id'         => $payment_id,
@@ -312,7 +332,7 @@ function consultarStatusMercadoPago($conn, $payment_id, $estabelecimento_id) {
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Authorization: Bearer ' . $config['access_token'],
+        'Authorization: Bearer ' . $mp_token,
         'Content-Type: application/json',
     ]);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');

@@ -51,13 +51,19 @@ class SumUpIntegration {
     private $email;
     private $affiliate_key;
     private $affiliate_app_id;
+    private $estabelecimento_id;
 
-    public function __construct() {
+    /**
+     * @param int|null $estabelecimento_id  Se informado, carrega credenciais do estabelecimento.
+     *                                       Se null, usa constantes globais do config.php.
+     */
+    public function __construct(?int $estabelecimento_id = null) {
+        $this->estabelecimento_id = $estabelecimento_id;
         $this->token         = 'Bearer ' . SUMUP_TOKEN;
         $this->merchant_code = SUMUP_MERCHANT_CODE;
         $this->checkout_url  = SUMUP_CHECKOUT_URL;
         $this->merchant_url  = SUMUP_MERCHANT_URL . $this->merchant_code;
-            $this->email         = defined('SUMUP_EMAIL') ? SUMUP_EMAIL : 'choppon24h@gmail.com';
+        $this->email         = defined('SUMUP_EMAIL') ? SUMUP_EMAIL : 'choppon24h@gmail.com';
 
         // Fallback primário: constantes do config.php (sempre disponíveis)
         $this->affiliate_key    = defined('SUMUP_AFFILIATE_KEY')    ? SUMUP_AFFILIATE_KEY    : '';
@@ -71,19 +77,51 @@ class SumUpIntegration {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Carrega configurações de pagamento salvas no banco.
-     * Prioridade: token do banco > token em constante.
+     * Carrega configurações de pagamento via PaymentConfigManager (multi-estabelecimento).
+     * Prioridade: payment_config por estabelecimento > constantes do config.php.
      */
     private function loadPaymentConfig(): void {
         try {
+            // Carregar PaymentConfigManager se ainda não carregado
+            if (!class_exists('PaymentConfigManager')) {
+                $mgr_path = dirname(__FILE__) . '/PaymentConfigManager.php';
+                if (file_exists($mgr_path)) {
+                    require_once $mgr_path;
+                }
+            }
+
+            if (class_exists('PaymentConfigManager')) {
+                $cfg = PaymentConfigManager::getConfig($this->estabelecimento_id);
+
+                if (!empty($cfg['sumup_token'])) {
+                    $this->token = 'Bearer ' . $cfg['sumup_token'];
+                }
+                if (!empty($cfg['sumup_affiliate_key'])) {
+                    $this->affiliate_key = trim($cfg['sumup_affiliate_key']);
+                }
+                if (!empty($cfg['sumup_affiliate_app_id'])) {
+                    $this->affiliate_app_id = trim($cfg['sumup_affiliate_app_id']);
+                }
+                if (!empty($cfg['sumup_merchant_code'])) {
+                    $this->merchant_code = $cfg['sumup_merchant_code'];
+                    $this->merchant_url  = SUMUP_MERCHANT_URL . $this->merchant_code;
+                }
+
+                Logger::info('SumUp: config carregada via PaymentConfigManager', [
+                    'estabelecimento_id' => $this->estabelecimento_id,
+                    'merchant_code'      => $this->merchant_code,
+                    'has_affiliate_key'  => !empty($this->affiliate_key),
+                ]);
+                return;
+            }
+
+            // Fallback legado: busca direto na tabela payment
             $conn = getDBConnection();
             $cfg  = null;
-
             try {
-                $stmt = $conn->query("SELECT affiliate_key, affiliate_app_id, token_sumup FROM payment LIMIT 1");
+                $stmt = $conn->query("SELECT affiliate_key, affiliate_app_id, token_sumup, merchant_code FROM payment LIMIT 1");
                 $cfg  = $stmt->fetch(PDO::FETCH_ASSOC);
             } catch (Exception $e) {
-                // Fallback para bases sem a coluna affiliate_app_id
                 try {
                     $stmt = $conn->query("SELECT affiliate_key, token_sumup FROM payment LIMIT 1");
                     $cfg  = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -93,20 +131,21 @@ class SumUpIntegration {
                     ]);
                 }
             }
-
             if (!$cfg) {
                 return;
             }
-
             if (!empty($cfg['token_sumup']) && $cfg['token_sumup'] !== SUMUP_TOKEN) {
                 $this->token = 'Bearer ' . $cfg['token_sumup'];
             }
-
             if (!empty($cfg['affiliate_key'])) {
                 $this->affiliate_key = trim((string) $cfg['affiliate_key']);
             }
             if (!empty($cfg['affiliate_app_id'])) {
                 $this->affiliate_app_id = trim((string) $cfg['affiliate_app_id']);
+            }
+            if (!empty($cfg['merchant_code'])) {
+                $this->merchant_code = $cfg['merchant_code'];
+                $this->merchant_url  = SUMUP_MERCHANT_URL . $this->merchant_code;
             }
         } catch (Exception $e) {
             Logger::error('SumUp: erro ao carregar configurações de pagamento', [

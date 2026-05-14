@@ -10,6 +10,9 @@
  *   Resposta 201: point_of_interaction.transaction_data com qr_code e qr_code_base64
  */
 require_once __DIR__ . '/config.php';
+if (!class_exists('PaymentConfigManager')) {
+    require_once __DIR__ . '/PaymentConfigManager.php';
+}
 
 class MercadoPagoPix {
 
@@ -19,6 +22,25 @@ class MercadoPagoPix {
 
     public function __construct($estabelecimentoId) {
         $this->estabelecimentoId = (int) $estabelecimentoId;
+
+        // Tentar carregar via PaymentConfigManager (payment_config multi-estabelecimento)
+        $cfg_mgr = PaymentConfigManager::getConfig($this->estabelecimentoId);
+
+        if (!empty($cfg_mgr['mp_access_token'])) {
+            $this->accessToken = $cfg_mgr['mp_access_token'];
+            $this->webhookUrl  = !empty($cfg_mgr['mp_webhook_url'])
+                ? $cfg_mgr['mp_webhook_url']
+                : 'https://ochoppoficial.com.br/webhooks/mercadopago_webhook.php';
+
+            if (class_exists('Logger')) {
+                Logger::info('MercadoPagoPix: config carregada via PaymentConfigManager', [
+                    'estabelecimento_id' => $this->estabelecimentoId,
+                ]);
+            }
+            return;
+        }
+
+        // Fallback: buscar na tabela mercadopago_config legada
         $conn = getDBConnection();
         $stmt = $conn->prepare(
             "SELECT access_token, webhook_url FROM mercadopago_config
@@ -27,7 +49,7 @@ class MercadoPagoPix {
         $stmt->execute([$this->estabelecimentoId]);
         $cfg = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$cfg) {
+        if (!$cfg || empty($cfg['access_token'])) {
             throw new \RuntimeException(
                 "MercadoPago nao configurado para estabelecimento_id={$this->estabelecimentoId}"
             );

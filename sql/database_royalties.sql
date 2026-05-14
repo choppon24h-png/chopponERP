@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS `royalties_historico` (
   `royalty_id` BIGINT UNSIGNED NOT NULL,
   `acao` VARCHAR(100) NOT NULL COMMENT 'criacao, geracao_boleto, pagamento, cancelamento',
   `descricao` TEXT NOT NULL,
-  `dados_json` TEXT NULL DEFAULT NULL COMMENT 'Dados adicionais em JSON',
+  `dados_json` TEXT NULL DEFAULT NULL COMMENT 'Dados adicionais em LONGTEXT',
   `user_id` BIGINT UNSIGNED NULL DEFAULT NULL,
   `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

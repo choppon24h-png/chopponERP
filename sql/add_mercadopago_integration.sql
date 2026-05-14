@@ -69,7 +69,7 @@ DEALLOCATE PREPARE stmt;
 SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
     WHERE TABLE_SCHEMA = @dbname AND TABLE_NAME = @tablename AND COLUMN_NAME = 'payment_data');
 SET @query = IF(@col_exists = 0, 
-    'ALTER TABLE `royalties` ADD COLUMN `payment_data` JSON NULL COMMENT ''Dados adicionais do pagamento''', 
+    'ALTER TABLE `royalties` ADD COLUMN `payment_data` LONGTEXT NULL COMMENT ''Dados adicionais do pagamento''', 
     'SELECT ''Column payment_data already exists'' AS msg');
 PREPARE stmt FROM @query;
 EXECUTE stmt;
@@ -121,8 +121,8 @@ CREATE TABLE IF NOT EXISTS `royalties_payment_log` (
   `metodo_pagamento` ENUM('stripe', 'cora', 'mercadopago', 'manual') NOT NULL,
   `acao` VARCHAR(100) NOT NULL COMMENT 'Ação realizada (criar_pagamento, webhook, etc)',
   `status` VARCHAR(50) NOT NULL,
-  `request_data` JSON NULL COMMENT 'Dados enviados para API',
-  `response_data` JSON NULL COMMENT 'Resposta da API',
+  `request_data` LONGTEXT NULL COMMENT 'Dados enviados para API',
+  `response_data` LONGTEXT NULL COMMENT 'Resposta da API',
   `erro_mensagem` TEXT NULL,
   `ip_address` VARCHAR(45) NULL,
   `user_agent` VARCHAR(255) NULL,

@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS `asaas_pagamentos` (
   `data_confirmacao` TIMESTAMP NULL,
   `data_credito` DATE NULL,
   `valor_liquido` DECIMAL(10,2) NULL,
-  `payload_completo` JSON NULL COMMENT 'Payload completo retornado pelo Asaas',
+  `payload_completo` LONGTEXT NULL COMMENT 'Payload completo retornado pelo Asaas',
   `data_criacao` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `data_atualizacao` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS `asaas_webhooks` (
   `event_id` VARCHAR(255) NOT NULL COMMENT 'ID único do evento no Asaas',
   `event_type` VARCHAR(100) NOT NULL COMMENT 'Tipo do evento (PAYMENT_RECEIVED, etc)',
   `asaas_payment_id` VARCHAR(100) NULL COMMENT 'ID do pagamento no Asaas',
-  `payload` JSON NOT NULL COMMENT 'Payload completo do webhook',
+  `payload` LONGTEXT NOT NULL COMMENT 'Payload completo do webhook',
   `processado` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '0=Pendente, 1=Processado',
   `data_recebimento` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `data_processamento` TIMESTAMP NULL,
@@ -96,8 +96,8 @@ CREATE TABLE IF NOT EXISTS `asaas_logs` (
   `operacao` VARCHAR(100) NOT NULL COMMENT 'Tipo de operação (criar_cliente, criar_cobranca, etc)',
   `status` VARCHAR(50) NOT NULL COMMENT 'Status da operação (sucesso, erro)',
   `estabelecimento_id` BIGINT(20) NULL,
-  `dados_requisicao` JSON NULL COMMENT 'Dados enviados para API',
-  `dados_resposta` JSON NULL COMMENT 'Resposta da API',
+  `dados_requisicao` LONGTEXT NULL COMMENT 'Dados enviados para API',
+  `dados_resposta` LONGTEXT NULL COMMENT 'Resposta da API',
   `mensagem_erro` TEXT NULL,
   `data_criacao` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -157,7 +157,7 @@ DEALLOCATE PREPARE stmt;
 SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
     WHERE TABLE_SCHEMA = @dbname AND TABLE_NAME = @tablename AND COLUMN_NAME = 'payment_data');
 SET @query = IF(@col_exists = 0, 
-    'ALTER TABLE `royalties` ADD COLUMN `payment_data` JSON NULL COMMENT ''Dados adicionais do pagamento''', 
+    'ALTER TABLE `royalties` ADD COLUMN `payment_data` LONGTEXT NULL COMMENT ''Dados adicionais do pagamento''', 
     'SELECT ''Column payment_data already exists'' AS msg');
 PREPARE stmt FROM @query;
 EXECUTE stmt;

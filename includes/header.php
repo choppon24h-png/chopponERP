@@ -141,6 +141,13 @@ $menu_structure = [
                 'icon' => 'fas fa-file-invoice',
                 'url' => 'admin/financeiro_faturamento.php',
                 'page_key' => 'financeiro_faturamento'
+            ],
+            'meios_pagamento' => [
+                'title' => 'Meios de Pagamento',
+                'icon' => 'fas fa-credit-card',
+                'url' => 'admin/meios_pagamento.php',
+                'page_key' => 'meios_pagamento',
+                'admin_only' => true
             ]
         ]
     ],
@@ -178,30 +185,6 @@ $menu_structure = [
                 'icon' => 'fab fa-telegram',
                 'url' => 'admin/telegram.php',
                 'page_key' => 'telegram'
-            ],
-            'stripe_config' => [
-                'title' => 'Stripe Pagamentos',
-                'icon' => 'fab fa-stripe',
-                'url' => 'admin/stripe_config.php',
-                'page_key' => 'stripe_config'
-            ],
-            'cora_config' => [
-                'title' => 'Banco Cora',
-                'icon' => 'fas fa-university',
-                'url' => 'admin/cora_config.php',
-                'page_key' => 'cora_config'
-            ],
-            'mercadopago_config' => [
-                'title' => 'Mercado Pago',
-                'icon' => 'fab fa-cc-mastercard',
-                'url' => 'admin/mercadopago_config.php',
-                'page_key' => 'mercadopago_config'
-            ],
-            'asaas_config' => [
-                'title' => 'Asaas',
-                'icon' => 'fas fa-dollar-sign',
-                'url' => 'admin/asaas_config.php',
-                'page_key' => 'asaas_config'
             ]
         ]
     ]

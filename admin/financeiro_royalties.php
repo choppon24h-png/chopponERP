@@ -83,6 +83,55 @@ if (isAdminGeral()) {
     $estabelecimento_atual = $stmt->fetch();
 }
 
+// ── Processar salvamento de banco padrão ──────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'salvar_banco_padrao') {
+    $estab_id_bp = intval($_POST['estab_id_banco_padrao'] ?? 0);
+    $banco_padrao = sanitize($_POST['banco_padrao'] ?? '');
+    $bancos_validos = ['stripe', 'cora', 'mercadopago', 'asaas'];
+    if ($estab_id_bp > 0 && in_array($banco_padrao, $bancos_validos)) {
+        try {
+            $cols = $conn->query("SHOW COLUMNS FROM estabelecimentos LIKE 'banco_padrao_royalties'")->fetchAll();
+            if (empty($cols)) {
+                $conn->exec("ALTER TABLE estabelecimentos ADD COLUMN banco_padrao_royalties VARCHAR(20) NULL DEFAULT NULL COMMENT 'Gateway padrao para pagamento de royalties'");
+            }
+            $conn->prepare("UPDATE estabelecimentos SET banco_padrao_royalties = ? WHERE id = ?")
+                 ->execute([$banco_padrao, $estab_id_bp]);
+            $success = 'Banco padrão de royalties atualizado com sucesso!';
+        } catch (\Exception $e) {
+            $error = 'Erro ao salvar banco padrão: ' . $e->getMessage();
+        }
+    }
+}
+
+// ── Buscar gateways disponíveis e banco padrão por estabelecimento ───────────────────
+$gateways_por_estab = [];
+try {
+    $rows = $conn->query("SELECT estabelecimento_id FROM stripe_config WHERE ativo = 1")->fetchAll(\PDO::FETCH_ASSOC);
+    foreach ($rows as $r2) $gateways_por_estab[$r2['estabelecimento_id']][] = 'stripe';
+    $rows = $conn->query("SELECT estabelecimento_id FROM cora_config WHERE ativo = 1")->fetchAll(\PDO::FETCH_ASSOC);
+    foreach ($rows as $r2) $gateways_por_estab[$r2['estabelecimento_id']][] = 'cora';
+    $rows = $conn->query("SELECT estabelecimento_id FROM mercadopago_config WHERE status = 1")->fetchAll(\PDO::FETCH_ASSOC);
+    foreach ($rows as $r2) $gateways_por_estab[$r2['estabelecimento_id']][] = 'mercadopago';
+    $rows = $conn->query("SELECT estabelecimento_id FROM asaas_config WHERE ativo = 1")->fetchAll(\PDO::FETCH_ASSOC);
+    foreach ($rows as $r2) $gateways_por_estab[$r2['estabelecimento_id']][] = 'asaas';
+} catch (\Exception $e) { /* tabelas podem nao existir */ }
+
+$banco_padrao_por_estab = [];
+try {
+    $cols = $conn->query("SHOW COLUMNS FROM estabelecimentos LIKE 'banco_padrao_royalties'")->fetchAll();
+    if (!empty($cols)) {
+        $rows = $conn->query("SELECT id, banco_padrao_royalties FROM estabelecimentos WHERE banco_padrao_royalties IS NOT NULL")->fetchAll(\PDO::FETCH_ASSOC);
+        foreach ($rows as $r2) $banco_padrao_por_estab[$r2['id']] = $r2['banco_padrao_royalties'];
+    }
+} catch (\Exception $e) { /* ignorar */ }
+
+$gateway_labels = [
+    'stripe'      => ['label' => 'Stripe',       'icon' => 'fab fa-stripe',        'cor' => '#635bff'],
+    'cora'        => ['label' => 'Banco Cora',   'icon' => 'fas fa-university',    'cor' => '#ff6b00'],
+    'mercadopago' => ['label' => 'Mercado Pago', 'icon' => 'fab fa-cc-mastercard', 'cor' => '#009ee3'],
+    'asaas'       => ['label' => 'Asaas',        'icon' => 'fas fa-dollar-sign',   'cor' => '#00a650'],
+];
+
 require_once '../includes/header.php';
 ?>
 
@@ -145,6 +194,77 @@ require_once '../includes/header.php';
             </div>
         </div>
     </div>
+
+    <!-- Painel: Banco Padrão por Estabelecimento -->
+    <?php if (isAdminGeral() && !empty($estabelecimentos)): ?>
+    <div class="card mb-4" style="border-left:4px solid #2563eb;">
+        <div class="card-header" style="background:#eff6ff;cursor:pointer;" onclick="toggleBancoPadrao()">
+            <i class="fas fa-university" style="color:#2563eb;"></i>
+            <strong style="color:#1e40af;"> Banco Padrão para Pagamento de Royalties</strong>
+            <span style="float:right;font-size:12px;color:#6b7280;">Clique para expandir/recolher <i class="fas fa-chevron-down" id="iconBancoPadrao"></i></span>
+        </div>
+        <div id="painelBancoPadrao" style="display:none;">
+        <div class="card-body">
+            <p class="text-muted" style="font-size:13px;margin-bottom:16px;">
+                <i class="fas fa-info-circle"></i>
+                Defina qual gateway de pagamento cada franqueado deverá usar para pagar os royalties.
+                Ao definir um banco padrão, o franqueado <strong>só poderá pagar pelo gateway selecionado</strong>.
+            </p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;">
+            <?php foreach ($estabelecimentos as $est):
+                $gws_estab = $gateways_por_estab[$est['id']] ?? [];
+                $bp = $banco_padrao_por_estab[$est['id']] ?? '';
+            ?>
+            <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;">
+                <div style="font-weight:600;color:#111827;font-size:14px;margin-bottom:10px;">
+                    <i class="fas fa-store" style="color:#6b7280;"></i> <?= htmlspecialchars($est['name']) ?>
+                </div>
+                <?php if (empty($gws_estab)): ?>
+                    <div style="font-size:12px;color:#9ca3af;"><i class="fas fa-exclamation-triangle"></i> Nenhum gateway ativo. Configure em <a href="meios_pagamento.php">Meios de Pagamento</a>.</div>
+                <?php else: ?>
+                <form method="POST" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <input type="hidden" name="action" value="salvar_banco_padrao">
+                    <input type="hidden" name="estab_id_banco_padrao" value="<?= $est['id'] ?>">
+                    <select name="banco_padrao" style="flex:1;min-width:160px;padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                        <option value="">-- Sem padrão (livre) --</option>
+                        <?php foreach ($gws_estab as $gw):
+                            $gl = $gateway_labels[$gw];
+                        ?>
+                        <option value="<?= $gw ?>" <?= $bp === $gw ? 'selected' : '' ?>>
+                            <?= $gl['label'] ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button type="submit" class="btn btn-sm btn-primary" style="white-space:nowrap;">
+                        <i class="fas fa-save"></i> Salvar
+                    </button>
+                    <?php if (!empty($bp) && isset($gateway_labels[$bp])): ?>
+                    <span style="font-size:11px;padding:3px 8px;border-radius:9999px;background:#d1fae5;color:#065f46;font-weight:600;">
+                        <i class="<?= $gateway_labels[$bp]['icon'] ?>"></i> <?= $gateway_labels[$bp]['label'] ?> (padrão)
+                    </span>
+                    <?php endif; ?>
+                </form>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+            </div>
+        </div>
+        </div>
+    </div>
+    <script>
+    function toggleBancoPadrao() {
+        const p = document.getElementById('painelBancoPadrao');
+        const i = document.getElementById('iconBancoPadrao');
+        if (p.style.display === 'none') {
+            p.style.display = 'block';
+            i.className = 'fas fa-chevron-up';
+        } else {
+            p.style.display = 'none';
+            i.className = 'fas fa-chevron-down';
+        }
+    }
+    </script>
+    <?php endif; ?>
 
     <!-- Botão Novo Lançamento -->
     <?php if (isAdminGeral()): ?>

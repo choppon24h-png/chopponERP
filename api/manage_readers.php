@@ -278,13 +278,27 @@ if ($action === 'check_api') {
 // ACTION: list
 // ─────────────────────────────────────────────────────────────
 if ($action === 'list') {
-    $stmt    = $conn->query("
-        SELECT sr.*, e.name AS estabelecimento_nome
-        FROM sumup_readers sr
-        LEFT JOIN estabelecimentos e ON sr.estabelecimento_id = e.id
-        ORDER BY sr.created_at DESC
-    ");
-    $readers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // REGRA: admin geral vê todas; usuário de estabelecimento vê apenas as do seu
+    if (isAdminGeral()) {
+        $stmt = $conn->query("
+            SELECT sr.*, e.name AS estabelecimento_nome
+            FROM sumup_readers sr
+            LEFT JOIN estabelecimentos e ON sr.estabelecimento_id = e.id
+            ORDER BY sr.created_at DESC
+        ");
+        $readers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $_estab_id_list = intval(getEstabelecimentoId());
+        $stmt = $conn->prepare("
+            SELECT sr.*, e.name AS estabelecimento_nome
+            FROM sumup_readers sr
+            LEFT JOIN estabelecimentos e ON sr.estabelecimento_id = e.id
+            WHERE sr.estabelecimento_id = ?
+            ORDER BY sr.created_at DESC
+        ");
+        $stmt->execute([$_estab_id_list]);
+        $readers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     foreach ($readers as &$r) {
         $st = getReaderStatus($r['reader_id']);
@@ -410,6 +424,18 @@ if ($action === 'test') {
         exit;
     }
 
+    // REGRA: usuário de estabelecimento só pode excluir leitoras do seu estabelecimento
+    if (!isAdminGeral()) {
+        $_estab_id_chk = intval(getEstabelecimentoId());
+        $stmt_chk = $conn->prepare("SELECT id FROM sumup_readers WHERE reader_id = ? AND estabelecimento_id = ?");
+        $stmt_chk->execute([$reader_id, $_estab_id_chk]);
+        if (!$stmt_chk->fetch()) {
+            http_response_code(403);
+            ob_clean();
+            echo json_encode(['error' => 'Acesso negado: esta leitora não pertence ao seu estabelecimento.']);
+            exit;
+        }
+    }
     // Validar formato do reader_id (BUG CORRIGIDO: {26} não {27})
     if (!validateReaderId($reader_id)) {
         http_response_code(400);
@@ -589,7 +615,14 @@ if ($action === 'delete_all') {
     }
 
     // 2) Buscar leitoras do banco local (para garantir limpeza completa)
-    $stmt    = $conn->query("SELECT reader_id, name FROM sumup_readers ORDER BY id");
+    // REGRA: admin geral exclui todas; usuário de estabelecimento exclui apenas as do seu
+    if (isAdminGeral()) {
+        $stmt = $conn->query("SELECT reader_id, name FROM sumup_readers ORDER BY id");
+    } else {
+        $_estab_id_del = intval(getEstabelecimentoId());
+        $stmt = $conn->prepare("SELECT reader_id, name FROM sumup_readers WHERE estabelecimento_id = ? ORDER BY id");
+        $stmt->execute([$_estab_id_del]);
+    }
     $db_readers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // 3) Unificar: IDs da API + IDs do banco (sem duplicatas)
@@ -692,6 +725,21 @@ if ($action === 'update_estab') {
         ob_clean();
         echo json_encode(['error' => 'reader_id é obrigatório']);
         exit;
+    }
+
+    // REGRA: usuário de estabelecimento só pode vincular leitoras ao seu próprio estabelecimento
+    if (!isAdminGeral()) {
+        $_estab_id_upd = intval(getEstabelecimentoId());
+        $stmt_chk_upd = $conn->prepare("SELECT id FROM sumup_readers WHERE reader_id = ? AND (estabelecimento_id = ? OR estabelecimento_id IS NULL)");
+        $stmt_chk_upd->execute([$reader_id, $_estab_id_upd]);
+        if (!$stmt_chk_upd->fetch()) {
+            http_response_code(403);
+            ob_clean();
+            echo json_encode(['error' => 'Acesso negado: esta leitora não pertence ao seu estabelecimento.']);
+            exit;
+        }
+        // Forçar o estabelecimento_id para o do usuário logado
+        $estabelecimento_id = $_estab_id_upd;
     }
 
     $conn->prepare("UPDATE sumup_readers SET estabelecimento_id = ?, updated_at = NOW() WHERE reader_id = ?")

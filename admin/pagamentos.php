@@ -124,12 +124,25 @@ $conn->exec("CREATE TABLE IF NOT EXISTS `sumup_readers` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
 // Buscar leitoras com nome do estabelecimento vinculado
-$stmt_readers = $conn->query("
-    SELECT sr.*, e.name AS estabelecimento_nome, e.id AS estab_id
-    FROM sumup_readers sr
-    LEFT JOIN estabelecimentos e ON sr.estabelecimento_id = e.id
-    ORDER BY sr.created_at DESC
-");
+// REGRA: admin geral vê todas; usuário de estabelecimento vê apenas as do seu estabelecimento
+if (isAdminGeral()) {
+    $stmt_readers = $conn->query("
+        SELECT sr.*, e.name AS estabelecimento_nome, e.id AS estab_id
+        FROM sumup_readers sr
+        LEFT JOIN estabelecimentos e ON sr.estabelecimento_id = e.id
+        ORDER BY sr.created_at DESC
+    ");
+} else {
+    $_estab_id_leitoras = intval(getEstabelecimentoId());
+    $stmt_readers = $conn->prepare("
+        SELECT sr.*, e.name AS estabelecimento_nome, e.id AS estab_id
+        FROM sumup_readers sr
+        LEFT JOIN estabelecimentos e ON sr.estabelecimento_id = e.id
+        WHERE sr.estabelecimento_id = ?
+        ORDER BY sr.created_at DESC
+    ");
+    $stmt_readers->execute([$_estab_id_leitoras]);
+}
 $readers = $stmt_readers->fetchAll(PDO::FETCH_ASSOC);
 
 require_once '../includes/header.php';

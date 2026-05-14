@@ -49,28 +49,32 @@ $filtros = [
 
 $royalties = $royaltiesManager->listar($filtros);
 
-// Calcular totais
-$total_pendente = 0;
-$total_link_gerado = 0;
-$total_enviado = 0;
-$total_pago = 0;
-
-foreach ($royalties as $r) {
-    switch ($r['status']) {
-        case 'pendente':
-            $total_pendente += $r['valor_royalties'];
-            break;
-        case 'link_gerado':
-            $total_link_gerado += $r['valor_royalties'];
-            break;
-        case 'enviado':
-            $total_enviado += $r['valor_royalties'];
-            break;
-        case 'pago':
-            $total_pago += $r['valor_royalties'];
-            break;
-    }
+// ── Dashboard: totais globais (independente dos filtros de listagem) ────────────
+$_dash_where = isAdminGeral() ? '1=1' : 'estabelecimento_id = ' . intval(getEstabelecimentoId());
+try {
+    $_dash = $conn->query("
+        SELECT
+            COALESCE(SUM(CASE WHEN status IN ('pendente','link_gerado','enviado') THEN valor_royalties ELSE 0 END), 0) AS total_pendente,
+            COALESCE(SUM(CASE WHEN status IN ('pago','conciliado','pagamento_manual')  THEN valor_royalties ELSE 0 END), 0) AS total_pago,
+            COALESCE(SUM(valor_faturamento_bruto), 0) AS faturamento_bruto,
+            COUNT(*) AS total_registros,
+            COUNT(CASE WHEN status IN ('pendente','link_gerado','enviado') THEN 1 END) AS qtd_pendente,
+            COUNT(CASE WHEN status IN ('pago','conciliado','pagamento_manual') THEN 1 END) AS qtd_pago
+        FROM royalties
+        WHERE {$_dash_where}
+    ")->fetch(\PDO::FETCH_ASSOC);
+} catch (\Exception $_e) {
+    $_dash = ['total_pendente'=>0,'total_pago'=>0,'faturamento_bruto'=>0,'total_registros'=>0,'qtd_pendente'=>0,'qtd_pago'=>0];
 }
+$total_pendente    = $_dash['total_pendente']    ?? 0;
+$total_pago        = $_dash['total_pago']        ?? 0;
+$faturamento_bruto = $_dash['faturamento_bruto'] ?? 0;
+$total_registros   = $_dash['total_registros']   ?? 0;
+$qtd_pendente      = $_dash['qtd_pendente']      ?? 0;
+$qtd_pago          = $_dash['qtd_pago']          ?? 0;
+// Manter compat
+$total_link_gerado = 0;
+$total_enviado     = 0;
 
 // Buscar estabelecimentos para dropdown
 if (isAdminGeral()) {
@@ -159,40 +163,94 @@ require_once '../includes/header.php';
     </div>
     <?php endif; ?>
 
-    <!-- Cards de Resumo -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card text-white bg-warning">
+    <!-- Dashboard de Royalties -->
+    <div class="row mb-4" id="dashboardRoyalties">
+        <!-- Card: Faturamento Bruto -->
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #6366f1 !important;">
                 <div class="card-body">
-                    <h5 class="card-title"><i class="fas fa-clock"></i> Pendentes</h5>
-                    <h3>R$ <?= number_format($total_pendente, 2, ',', '.') ?></h3>
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <div style="font-size:12px;font-weight:600;color:#6366f1;text-transform:uppercase;letter-spacing:.5px;">Faturamento Bruto</div>
+                            <div style="font-size:24px;font-weight:700;color:#111827;margin:4px 0;">R$ <?= number_format($faturamento_bruto, 2, ',', '.') ?></div>
+                            <div style="font-size:12px;color:#6b7280;"><?= $total_registros ?> lançamento<?= $total_registros != 1 ? 's' : '' ?> no total</div>
+                        </div>
+                        <div style="width:48px;height:48px;background:#ede9fe;border-radius:12px;display:flex;align-items:center;justify-content:center;">
+                            <i class="fas fa-chart-line" style="color:#6366f1;font-size:20px;"></i>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card text-white bg-info">
+        <!-- Card: Pendentes -->
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #f59e0b !important;">
                 <div class="card-body">
-                    <h5 class="card-title"><i class="fas fa-link"></i> Link Gerado</h5>
-                    <h3>R$ <?= number_format($total_link_gerado, 2, ',', '.') ?></h3>
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <div style="font-size:12px;font-weight:600;color:#d97706;text-transform:uppercase;letter-spacing:.5px;">Pendentes</div>
+                            <div style="font-size:24px;font-weight:700;color:#111827;margin:4px 0;">R$ <?= number_format($total_pendente, 2, ',', '.') ?></div>
+                            <div style="font-size:12px;color:#6b7280;"><?= $qtd_pendente ?> cobrança<?= $qtd_pendente != 1 ? 's' : '' ?> em aberto</div>
+                        </div>
+                        <div style="width:48px;height:48px;background:#fef3c7;border-radius:12px;display:flex;align-items:center;justify-content:center;">
+                            <i class="fas fa-clock" style="color:#d97706;font-size:20px;"></i>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card text-white bg-primary">
+        <!-- Card: Pagos / Concluídos -->
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #10b981 !important;">
                 <div class="card-body">
-                    <h5 class="card-title"><i class="fas fa-envelope"></i> Enviados</h5>
-                    <h3>R$ <?= number_format($total_enviado, 2, ',', '.') ?></h3>
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <div style="font-size:12px;font-weight:600;color:#059669;text-transform:uppercase;letter-spacing:.5px;">Concluídos</div>
+                            <div style="font-size:24px;font-weight:700;color:#111827;margin:4px 0;">R$ <?= number_format($total_pago, 2, ',', '.') ?></div>
+                            <div style="font-size:12px;color:#6b7280;"><?= $qtd_pago ?> pagamento<?= $qtd_pago != 1 ? 's' : '' ?> confirmado<?= $qtd_pago != 1 ? 's' : '' ?></div>
+                        </div>
+                        <div style="width:48px;height:48px;background:#d1fae5;border-radius:12px;display:flex;align-items:center;justify-content:center;">
+                            <i class="fas fa-check-circle" style="color:#059669;font-size:20px;"></i>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card text-white bg-success">
+        <!-- Card: Taxa de Recebimento -->
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #3b82f6 !important;">
                 <div class="card-body">
-                    <h5 class="card-title"><i class="fas fa-check"></i> Pagos</h5>
-                    <h3>R$ <?= number_format($total_pago, 2, ',', '.') ?></h3>
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <div style="font-size:12px;font-weight:600;color:#2563eb;text-transform:uppercase;letter-spacing:.5px;">Taxa de Recebimento</div>
+                            <?php
+                                $_total_royalties = $total_pendente + $total_pago;
+                                $_taxa = $_total_royalties > 0 ? round(($total_pago / $_total_royalties) * 100, 1) : 0;
+                            ?>
+                            <div style="font-size:24px;font-weight:700;color:#111827;margin:4px 0;"><?= $_taxa ?>%</div>
+                            <div style="font-size:12px;color:#6b7280;">do valor total cobrado</div>
+                        </div>
+                        <div style="width:48px;height:48px;background:#dbeafe;border-radius:12px;display:flex;align-items:center;justify-content:center;">
+                            <i class="fas fa-percentage" style="color:#2563eb;font-size:20px;"></i>
+                        </div>
+                    </div>
+                    <!-- Barra de progresso -->
+                    <div style="margin-top:10px;">
+                        <div style="background:#e5e7eb;border-radius:9999px;height:6px;">
+                            <div style="background:#3b82f6;border-radius:9999px;height:6px;width:<?= $_taxa ?>%;transition:width .5s;"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
+    </div>
+    <!-- Alerta webhook MP -->
+    <div class="alert alert-info alert-dismissible" style="border-left:4px solid #009ee3;background:#f0f9ff;" role="alert">
+        <i class="fab fa-cc-mastercard" style="color:#009ee3;"></i>
+        <strong>Conciliação automática via Mercado Pago ativa.</strong>
+        Configure o webhook no painel do MP para:
+        <code style="background:#e0f2fe;padding:2px 6px;border-radius:4px;"><?= defined('SITE_URL') ? SITE_URL : 'https://ochoppoficial.com.br' ?>/api/webhook_royalties_mp.php</code>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
 
     <!-- Painel: Banco Padrão por Estabelecimento -->
@@ -372,30 +430,47 @@ require_once '../includes/header.php';
                             <td><?php echo getStatusBadge($r['status']); ?></td>
                             <td>
                                 <div class="btn-group btn-group-sm">
+                                    <!-- Visualizar -->
                                     <button class="btn btn-info" onclick="visualizarRoyalty(<?= $r['id'] ?>)" title="Visualizar">
                                         <i class="fas fa-eye"></i>
                                     </button>
-                                    
+                                    <!-- Editar (somente admin e status pendente/link_gerado) -->
+                                    <?php if (isAdminGeral() && !in_array($r['status'], ['pago','conciliado','pagamento_manual','cancelado'])): ?>
+                                    <button class="btn btn-secondary" onclick="editarRoyalty(<?= $r['id'] ?>)" title="Editar">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <?php endif; ?>
+                                    <!-- Pagar (gerar link) -->
                                     <?php if ($r['status'] === 'pendente'): ?>
-                                    <button class="btn btn-success" onclick="pagarRoyalty(<?= $r['id'] ?>)" title="Pagar">
+                                    <button class="btn btn-success" onclick="pagarRoyalty(<?= $r['id'] ?>)" title="Gerar Link de Pagamento">
                                         <i class="fas fa-credit-card"></i> Pagar
                                     </button>
                                     <?php endif; ?>
-                                    
-                                    <?php if ($r['status'] === 'link_gerado' || $r['status'] === 'enviado'): ?>
-                                    
-                                    <?php if ($r['tipo_cobranca'] === 'cora' && !empty($r['boleto_url'])): ?>
-                                    <button class="btn btn-warning" onclick="window.open('<?= htmlspecialchars($r['boleto_url']) ?>', '_blank')" title="Visualizar Boleto">
-                                        <i class="fas fa-barcode"></i> Boleto
+                                    <!-- Boleto/Reenvio -->
+                                    <?php if (in_array($r['status'], ['link_gerado','enviado'])): ?>
+                                    <?php if (!empty($r['boleto_url'])): ?>
+                                    <button class="btn btn-warning" onclick="window.open('<?= htmlspecialchars($r['boleto_url']) ?>', '_blank')" title="Ver Boleto">
+                                        <i class="fas fa-barcode"></i>
                                     </button>
                                     <?php endif; ?>
-                                    
-                                    <button class="btn btn-primary" onclick="reenviarEmail(<?= $r['id'] ?>)" title="Enviar/Reenviar E-mail">
+                                    <?php if (!empty($r['mp_link_pagamento'])): ?>
+                                    <button class="btn btn-outline-info" onclick="window.open('<?= htmlspecialchars($r['mp_link_pagamento']) ?>', '_blank')" title="Link MP">
+                                        <i class="fab fa-cc-mastercard"></i>
+                                    </button>
+                                    <?php endif; ?>
+                                    <button class="btn btn-primary" onclick="reenviarEmail(<?= $r['id'] ?>)" title="Reenviar E-mail">
                                         <i class="fas fa-envelope"></i>
                                     </button>
                                     <?php endif; ?>
-                                    
-                                    <?php if ($r['status'] !== 'pago' && $r['status'] !== 'cancelado'): ?>
+                                    <!-- Pagamento Manual -->
+                                    <?php if (!in_array($r['status'], ['pago','conciliado','pagamento_manual','cancelado'])): ?>
+                                    <button class="btn btn-purple" onclick="pagamentoManual(<?= $r['id'] ?>)" title="Marcar como Pago Manualmente"
+                                        style="background:#7c3aed;color:#fff;border-color:#7c3aed;">
+                                        <i class="fas fa-hand-holding-usd"></i>
+                                    </button>
+                                    <?php endif; ?>
+                                    <!-- Cancelar -->
+                                    <?php if (!in_array($r['status'], ['pago','conciliado','pagamento_manual','cancelado'])): ?>
                                     <button class="btn btn-danger" onclick="cancelarRoyalty(<?= $r['id'] ?>)" title="Cancelar">
                                         <i class="fas fa-times"></i>
                                     </button>
@@ -416,14 +491,15 @@ require_once '../includes/header.php';
 // Função auxiliar para exibir badge de status
 function getStatusBadge($status) {
     $badges = [
-        'pendente' => '<span class="badge bg-warning"><i class="fas fa-clock"></i> Pendente</span>',
-        'link_gerado' => '<span class="badge bg-info"><i class="fas fa-link"></i> Link Gerado</span>',
-        'enviado' => '<span class="badge bg-primary"><i class="fas fa-envelope"></i> Enviado</span>',
-        'pago' => '<span class="badge bg-success"><i class="fas fa-check"></i> Pago</span>',
-        'cancelado' => '<span class="badge bg-danger"><i class="fas fa-times"></i> Cancelado</span>'
+        'pendente'         => '<span class="badge bg-warning"><i class="fas fa-clock"></i> Pendente</span>',
+        'link_gerado'      => '<span class="badge bg-info"><i class="fas fa-link"></i> Link Gerado</span>',
+        'enviado'          => '<span class="badge bg-primary"><i class="fas fa-envelope"></i> Enviado</span>',
+        'pago'             => '<span class="badge bg-success"><i class="fas fa-check"></i> Pago</span>',
+        'conciliado'       => '<span class="badge" style="background:#009ee3;"><i class="fab fa-cc-mastercard"></i> Conciliado MP</span>',
+        'pagamento_manual' => '<span class="badge" style="background:#7c3aed;"><i class="fas fa-hand-holding-usd"></i> Pgto. Manual</span>',
+        'cancelado'        => '<span class="badge bg-danger"><i class="fas fa-times"></i> Cancelado</span>',
     ];
-    
-    return $badges[$status] ?? '<span class="badge bg-secondary">' . $status . '</span>';
+    return $badges[$status] ?? '<span class="badge bg-secondary">' . htmlspecialchars($status) . '</span>';
 }
 ?>
 
@@ -1014,8 +1090,79 @@ function cancelarRoyalty(id) {
 
 // ===== FUNÇÃO PAGAR ROYALTY =====
 function pagarRoyalty(id) {
-    // Redirecionar para página de seleção de método de pagamento
     window.location.href = `royalty_selecionar_pagamento.php?id=${id}`;
+}
+// ===== PAGAMENTO MANUAL =====
+function pagamentoManual(id) {
+    document.getElementById('pm_royalty_id').value = id;
+    document.getElementById('pm_data_pagamento').value = new Date().toISOString().split('T')[0];
+    document.getElementById('pm_valor_pago').value = '';
+    document.getElementById('pm_observacao').value = '';
+    openModal('modalPagamentoManual');
+}
+function confirmarPagamentoManual() {
+    const id    = document.getElementById('pm_royalty_id').value;
+    const data  = document.getElementById('pm_data_pagamento').value;
+    const valor = document.getElementById('pm_valor_pago').value;
+    const obs   = document.getElementById('pm_observacao').value;
+    if (!data || !valor) { alert('Preencha a data e o valor pago.'); return; }
+    fetch('ajax/royalties_actions.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `action=pagamento_manual&id=${id}&data_pagamento=${encodeURIComponent(data)}&valor_pago=${encodeURIComponent(valor)}&observacao=${encodeURIComponent(obs)}`
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) { alert('Pagamento registrado com sucesso!'); location.reload(); }
+        else { alert('Erro: ' + data.message); }
+    })
+    .catch(() => alert('Erro ao registrar pagamento.'));
+}
+// ===== EDITAR ROYALTY =====
+function editarRoyalty(id) {
+    fetch('ajax/royalties_actions.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `action=buscar&id=${id}`
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) { alert('Erro ao carregar: ' + data.message); return; }
+        const r = data.royalty;
+        document.getElementById('edit_royalty_id').value          = r.id;
+        document.getElementById('edit_mes_referencia').value      = r.mes_referencia ? r.mes_referencia.substring(0,7) : '';
+        document.getElementById('edit_valor_faturamento').value   = r.valor_faturamento_bruto;
+        document.getElementById('edit_percentual_royalties').value= r.percentual_royalties;
+        document.getElementById('edit_valor_royalties').value     = r.valor_royalties;
+        document.getElementById('edit_data_vencimento').value     = r.data_vencimento;
+        document.getElementById('edit_observacoes').value         = r.observacoes || '';
+        openModal('modalEditarRoyalty');
+    })
+    .catch(() => alert('Erro ao carregar dados.'));
+}
+function salvarEdicaoRoyalty() {
+    const id = document.getElementById('edit_royalty_id').value;
+    const params = new URLSearchParams({
+        action: 'editar',
+        id,
+        mes_referencia:        document.getElementById('edit_mes_referencia').value,
+        valor_faturamento_bruto: document.getElementById('edit_valor_faturamento').value,
+        percentual_royalties:  document.getElementById('edit_percentual_royalties').value,
+        valor_royalties:       document.getElementById('edit_valor_royalties').value,
+        data_vencimento:       document.getElementById('edit_data_vencimento').value,
+        observacoes:           document.getElementById('edit_observacoes').value,
+    });
+    fetch('ajax/royalties_actions.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: params.toString()
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) { alert('Royalty atualizado!'); location.reload(); }
+        else { alert('Erro: ' + data.message); }
+    })
+    .catch(() => alert('Erro ao salvar.'));
 }
 
 // ===== FUNÇÕES AUXILIARES =====
@@ -1042,4 +1189,93 @@ function formatarFormaPagamento(forma) {
 }
 </script>
 
+<!-- Modal: Pagamento Manual -->
+<div id="modalPagamentoManual" class="modal">
+    <div class="modal-content" style="max-width:480px;">
+        <div class="modal-header" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);">
+            <h2 style="color:#fff;"><i class="fas fa-hand-holding-usd"></i> Registrar Pagamento Manual</h2>
+            <span class="close" onclick="closeModal('modalPagamentoManual')" style="color:#fff;">&times;</span>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="pm_royalty_id">
+            <div class="alert alert-warning" style="font-size:13px;">
+                <i class="fas fa-info-circle"></i> O status será alterado para <strong>Pagamento Manual</strong>, equivalente ao recebimento via webhook do Mercado Pago.
+            </div>
+            <div class="mb-3">
+                <label class="form-label"><strong>Data do Pagamento *</strong></label>
+                <input type="date" id="pm_data_pagamento" class="form-control">
+            </div>
+            <div class="mb-3">
+                <label class="form-label"><strong>Valor Pago (R$) *</strong></label>
+                <input type="number" id="pm_valor_pago" class="form-control" step="0.01" min="0" placeholder="0,00">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Observação</label>
+                <textarea id="pm_observacao" class="form-control" rows="3" placeholder="Ex: Pago via transferência bancária, comprovante recebido..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('modalPagamentoManual')">Cancelar</button>
+            <button type="button" class="btn btn-success" onclick="confirmarPagamentoManual()">
+                <i class="fas fa-check"></i> Confirmar Pagamento
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Editar Royalty -->
+<div id="modalEditarRoyalty" class="modal">
+    <div class="modal-content" style="max-width:560px;">
+        <div class="modal-header">
+            <h2><i class="fas fa-edit"></i> Editar Lançamento de Royalty</h2>
+            <span class="close" onclick="closeModal('modalEditarRoyalty')">&times;</span>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="edit_royalty_id">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label"><strong>Mês de Referência</strong></label>
+                    <input type="month" id="edit_mes_referencia" class="form-control">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label"><strong>Vencimento</strong></label>
+                    <input type="date" id="edit_data_vencimento" class="form-control">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label"><strong>Faturamento Bruto (R$)</strong></label>
+                    <input type="number" id="edit_valor_faturamento" class="form-control" step="0.01" min="0"
+                        oninput="recalcularEditRoyalty()">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label"><strong>% Royalties</strong></label>
+                    <input type="number" id="edit_percentual_royalties" class="form-control" step="0.01" min="0" max="100"
+                        oninput="recalcularEditRoyalty()">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label"><strong>Valor Royalties (R$)</strong></label>
+                    <input type="number" id="edit_valor_royalties" class="form-control" step="0.01" min="0">
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Observações</label>
+                    <textarea id="edit_observacoes" class="form-control" rows="3"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('modalEditarRoyalty')">Cancelar</button>
+            <button type="button" class="btn btn-primary" onclick="salvarEdicaoRoyalty()">
+                <i class="fas fa-save"></i> Salvar Alterações
+            </button>
+        </div>
+    </div>
+</div>
+<script>
+function recalcularEditRoyalty() {
+    const fat = parseFloat(document.getElementById('edit_valor_faturamento').value) || 0;
+    const pct = parseFloat(document.getElementById('edit_percentual_royalties').value) || 0;
+    if (fat > 0 && pct > 0) {
+        document.getElementById('edit_valor_royalties').value = (fat * pct / 100).toFixed(2);
+    }
+}
+</script>
 <?php require_once '../includes/footer.php'; ?>

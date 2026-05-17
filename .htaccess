@@ -1,0 +1,149 @@
+# =====================================================
+# .htaccess - ChoppON ERP v3.x
+# =====================================================
+
+# =====================================================
+# Documento Padrão — RESOLVE O ERRO 403 NA RAIZ
+# =====================================================
+DirectoryIndex index.php index.html
+
+# =====================================================
+# Redirecionar raiz para index.php
+# =====================================================
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Forçar HTTPS
+    RewriteCond %{HTTPS} off
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+    # Se a requisição for para a raiz exata ("/"), servir index.php
+    RewriteRule ^$ index.php [L]
+
+    # Se o arquivo ou diretório não existir, redirecionar para index.php
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ index.php [L]
+</IfModule>
+
+# =====================================================
+# Desabilitar Listagem de Diretórios
+# =====================================================
+Options -Indexes
+
+# =====================================================
+# Headers de Segurança
+# =====================================================
+<IfModule mod_headers.c>
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net data:; img-src 'self' data: https:; connect-src 'self' https:; frame-src https://js.stripe.com;"
+    # HSTS — ativo pois o site usa HTTPS
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+</IfModule>
+
+# =====================================================
+# Proteger Arquivos Sensíveis
+# =====================================================
+<FilesMatch "^\.env|^\.git|^\.htaccess_secure|^\.env\.secure">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<FilesMatch "\.(ini|conf|config|bak|backup|sql)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<FilesMatch "\.log$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# =====================================================
+# Proteção contra Injeção de Código
+# =====================================================
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Bloquear XSS via query string
+    RewriteCond %{QUERY_STRING} (<|%3C).*script.*(>|%3E) [NC,OR]
+    RewriteCond %{QUERY_STRING} GLOBALS(=|\[|%[0-9A-Z]{0,2}) [OR]
+    RewriteCond %{QUERY_STRING} _REQUEST(=|\[|%[0-9A-Z]{0,2})
+    RewriteRule ^(.*)$ - [F,L]
+
+    # Bloquear SQL injection
+    RewriteCond %{QUERY_STRING} (union.*select|insert.*into|delete.*from|drop.*table) [NC]
+    RewriteRule ^(.*)$ - [F,L]
+
+    # Bloquear file inclusion
+    RewriteCond %{QUERY_STRING} \.\.\/ [NC,OR]
+    RewriteCond %{QUERY_STRING} boot\.ini [NC,OR]
+    RewriteCond %{QUERY_STRING} etc/passwd [NC,OR]
+    RewriteCond %{QUERY_STRING} self/environ [NC]
+    RewriteRule ^(.*)$ - [F,L]
+
+    # Bloquear user agents maliciosos (exceto vazio — pode ser legítimo)
+    RewriteCond %{HTTP_USER_AGENT} ^(curl|wget|python|nikto|scan) [NC]
+    RewriteRule ^(.*)$ - [F,L]
+</IfModule>
+
+# =====================================================
+# Configurações PHP
+# =====================================================
+php_value upload_max_filesize 10M
+php_value post_max_size 10M
+php_value max_execution_time 300
+php_value max_input_time 300
+php_flag display_errors Off
+php_flag display_startup_errors Off
+php_value error_reporting 0
+php_flag expose_php Off
+
+# =====================================================
+# Sessões Seguras
+# =====================================================
+php_flag session.cookie_httponly On
+php_flag session.cookie_secure On
+php_value session.cookie_samesite Strict
+php_flag session.use_strict_mode On
+php_flag session.use_only_cookies On
+
+# =====================================================
+# Compressão GZIP
+# =====================================================
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
+
+# =====================================================
+# Cache de Arquivos Estáticos
+# =====================================================
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType font/ttf "access plus 1 year"
+    ExpiresByType text/html "access plus 0 seconds"
+</IfModule>
+
+# =====================================================
+# Limitar Métodos HTTP
+# =====================================================
+<LimitExcept GET POST>
+    Order deny,allow
+    Deny from all
+</LimitExcept>
+
+# =====================================================
+# Fim do arquivo .htaccess
+# =====================================================

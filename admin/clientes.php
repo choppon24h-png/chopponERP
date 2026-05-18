@@ -313,108 +313,138 @@ require_once '../includes/header.php';
 </div>
 
 <!-- Modal Criar Cliente -->
-<div id="createModal" class="modal">
-    <div class="modal-content modal-lg">
-        <span class="close" onclick="closeModal('createModal')">&times;</span>
-        <h2>Novo Cliente</h2>
-        
+<div id="createModal" class="modal-overlay" onclick="if(event.target===this)closeModal('createModal')">
+    <div class="modal-box" style="max-width:680px">
+
+        <!-- Cabeçalho -->
+        <div class="modal-box-header">
+            <h4><i class="fas fa-user-plus" style="color:var(--primary-color);margin-right:8px"></i>Novo Cliente</h4>
+            <button type="button" class="btn-close-modal" onclick="closeModal('createModal')">&times;</button>
+        </div>
+
         <form method="POST">
             <input type="hidden" name="action" value="create">
-            
-            <?php if (isAdminGeral()): ?>
-            <div class="form-group">
-                <label>Estabelecimento *</label>
-                <select name="estabelecimento_id" required>
-                    <option value="">Selecione...</option>
-                    <?php
-                    $stmt = $conn->query("SELECT id, name FROM estabelecimentos ORDER BY name");
-                    while ($est = $stmt->fetch()):
-                    ?>
-                    <option value="<?php echo $est['id']; ?>"><?php echo htmlspecialchars($est['name']); ?></option>
-                    <?php endwhile; ?>
-                </select>
+
+            <div class="modal-box-body">
+
+                <?php if (isAdminGeral()): ?>
+                <!-- Estabelecimento -->
+                <div class="form-section" style="margin-bottom:20px">
+                    <div class="form-group">
+                        <label><i class="fas fa-store"></i> Estabelecimento <span class="text-danger">*</span></label>
+                        <select name="estabelecimento_id" class="form-control" required>
+                            <option value="">Selecione o estabelecimento...</option>
+                            <?php
+                            $stmt = $conn->query("SELECT id, name FROM estabelecimentos ORDER BY name");
+                            while ($est = $stmt->fetch()):
+                            ?>
+                            <option value="<?php echo $est['id']; ?>"><?php echo htmlspecialchars($est['name']); ?></option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <!-- Dados Pessoais -->
+                <div class="form-section">
+                    <h5 class="form-section-title"><i class="fas fa-id-card"></i> Dados Pessoais</h5>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:2">
+                            <label>Nome Completo <span class="text-danger">*</span></label>
+                            <input type="text" name="nome" class="form-control" placeholder="Nome completo do cliente" required>
+                        </div>
+                        <div class="form-group" style="flex:1">
+                            <label>CPF <span class="text-danger">*</span></label>
+                            <input type="text" name="cpf" class="form-control cpf-mask" placeholder="000.000.000-00" required>
+                        </div>
+                        <div class="form-group" style="flex:1">
+                            <label>Data de Nascimento</label>
+                            <input type="date" name="data_nascimento" class="form-control">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1">
+                            <label>E-mail</label>
+                            <input type="email" name="email" class="form-control" placeholder="email@exemplo.com">
+                        </div>
+                        <div class="form-group" style="flex:1">
+                            <label>Telefone</label>
+                            <input type="text" name="telefone" class="form-control phone-mask" placeholder="(00) 00000-0000">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Endereço -->
+                <div class="form-section" style="margin-top:16px">
+                    <h5 class="form-section-title"><i class="fas fa-map-marker-alt"></i> Endereço</h5>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:0 0 140px">
+                            <label>CEP</label>
+                            <input type="text" name="endereco_cep" class="form-control cep-mask" id="cep" placeholder="00000-000">
+                        </div>
+                        <div class="form-group" style="flex:1">
+                            <label>Rua / Logradouro</label>
+                            <input type="text" name="endereco_rua" class="form-control" id="rua" placeholder="Rua, Av., Travessa...">
+                        </div>
+                        <div class="form-group" style="flex:0 0 100px">
+                            <label>Número</label>
+                            <input type="text" name="endereco_numero" class="form-control" placeholder="Nº">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex:1">
+                            <label>Complemento</label>
+                            <input type="text" name="endereco_complemento" class="form-control" placeholder="Apto, Bloco...">
+                        </div>
+                        <div class="form-group" style="flex:1">
+                            <label>Bairro</label>
+                            <input type="text" name="endereco_bairro" class="form-control" id="bairro" placeholder="Bairro">
+                        </div>
+                        <div class="form-group" style="flex:1">
+                            <label>Cidade</label>
+                            <input type="text" name="endereco_cidade" class="form-control" id="cidade" placeholder="Cidade">
+                        </div>
+                        <div class="form-group" style="flex:0 0 70px">
+                            <label>UF</label>
+                            <input type="text" name="endereco_estado" class="form-control" id="estado" maxlength="2" placeholder="MG">
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- /modal-box-body -->
+
+            <!-- Rodapé -->
+            <div class="modal-box-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('createModal')">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Salvar Cliente
+                </button>
             </div>
-            <?php endif; ?>
-            
-            <h3>Dados Pessoais</h3>
-            <div class="form-row">
-                <div class="form-group col-md-6">
-                    <label>Nome Completo *</label>
-                    <input type="text" name="nome" required>
-                </div>
-                
-                <div class="form-group col-md-3">
-                    <label>CPF *</label>
-                    <input type="text" name="cpf" class="cpf-mask" required>
-                </div>
-                
-                <div class="form-group col-md-3">
-                    <label>Data de Nascimento</label>
-                    <input type="date" name="data_nascimento">
-                </div>
-            </div>
-            
-            <div class="form-row">
-                <div class="form-group col-md-6">
-                    <label>Email</label>
-                    <input type="email" name="email">
-                </div>
-                
-                <div class="form-group col-md-6">
-                    <label>Telefone</label>
-                    <input type="text" name="telefone" class="phone-mask">
-                </div>
-            </div>
-            
-            <h3>Endereço</h3>
-            <div class="form-row">
-                <div class="form-group col-md-3">
-                    <label>CEP</label>
-                    <input type="text" name="endereco_cep" class="cep-mask" id="cep">
-                </div>
-                
-                <div class="form-group col-md-7">
-                    <label>Rua</label>
-                    <input type="text" name="endereco_rua" id="rua">
-                </div>
-                
-                <div class="form-group col-md-2">
-                    <label>Número</label>
-                    <input type="text" name="endereco_numero">
-                </div>
-            </div>
-            
-            <div class="form-row">
-                <div class="form-group col-md-4">
-                    <label>Complemento</label>
-                    <input type="text" name="endereco_complemento">
-                </div>
-                
-                <div class="form-group col-md-4">
-                    <label>Bairro</label>
-                    <input type="text" name="endereco_bairro" id="bairro">
-                </div>
-                
-                <div class="form-group col-md-3">
-                    <label>Cidade</label>
-                    <input type="text" name="endereco_cidade" id="cidade">
-                </div>
-                
-                <div class="form-group col-md-1">
-                    <label>UF</label>
-                    <input type="text" name="endereco_estado" id="estado" maxlength="2">
-                </div>
-            </div>
-            
-            <div class="form-actions">
-                <button type="button" class="btn btn-secondary" onclick="closeModal('createModal')">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Salvar</button>
-            </div>
+
         </form>
     </div>
 </div>
 
 <script>
+// Funções de modal padrão do sistema
+function openModal(id) {
+    const el = document.getElementById(id);
+    if (el) { el.classList.add('active'); document.body.style.overflow = 'hidden'; }
+}
+function closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) { el.classList.remove('active'); document.body.style.overflow = ''; }
+}
+// Fechar com ESC
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+        document.body.style.overflow = '';
+    }
+});
+
 // Busca em tempo real
 document.getElementById('searchCliente').addEventListener('keyup', filterTable);
 document.getElementById('filterStatus').addEventListener('change', filterTable);

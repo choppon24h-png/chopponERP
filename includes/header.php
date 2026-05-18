@@ -169,6 +169,24 @@ $menu_structure = [
             ]
         ]
     ],
+    'crm' => [
+        'title' => 'CRM',
+        'icon' => 'fas fa-handshake',
+        'submenu' => [
+            'crm_leads' => [
+                'title' => 'Leads',
+                'icon' => 'fas fa-funnel-dollar',
+                'url' => 'admin/crm_leads.php',
+                'page_key' => 'crm_leads'
+            ],
+            'crm_oportunidades' => [
+                'title' => 'Oportunidades',
+                'icon' => 'fas fa-chart-line',
+                'url' => 'admin/crm_oportunidades.php',
+                'page_key' => 'crm_oportunidades'
+            ]
+        ]
+    ],
     'integracoes' => [
         'title' => 'Integrações',
         'icon' => 'fas fa-plug',

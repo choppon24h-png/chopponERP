@@ -107,42 +107,7 @@ require_once '../includes/header.php';
 
 <!-- ── Estilos específicos do módulo ──────────────────────────────────────── -->
 <style>
-/* Cards de estatísticas */
-.stat-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
-}
-.stat-card {
-    background: #fff;
-    border-radius: var(--border-radius);
-    padding: 18px 20px;
-    box-shadow: var(--box-shadow);
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
-.stat-card .stat-icon {
-    width: 46px;
-    height: 46px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    flex-shrink: 0;
-}
-.stat-card .stat-info .stat-value {
-    font-size: 22px;
-    font-weight: 700;
-    line-height: 1;
-}
-.stat-card .stat-info .stat-label {
-    font-size: 12px;
-    color: var(--gray-600);
-    margin-top: 3px;
-}
+/* stat-card/stat-icon: definidos em assets/css/style.css */
 .stat-icon.blue   { background: #e3f0ff; color: var(--primary-color); }
 .stat-icon.green  { background: #e6f9ee; color: var(--success-color); }
 .stat-icon.orange { background: #fff3e0; color: var(--secondary-color); }

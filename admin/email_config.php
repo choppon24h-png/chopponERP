@@ -137,22 +137,12 @@ require_once '../includes/header.php';
 .tab-link:hover { background:#f3f4f6; color:#374151; }
 .tab-link.active { color:#2563eb; border-bottom-color:#2563eb; background:#eff6ff; }
 
-.stat-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:16px; margin-bottom:24px; }
-.stat-card { background:#fff; border-radius:8px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.08); text-align:center; }
+/* stat-cards/stat-card/form-row/form-section: definidos em assets/css/style.css */
 .stat-card .stat-num { font-size:28px; font-weight:700; }
-.stat-card .stat-label { font-size:12px; color:#6b7280; margin-top:4px; }
 .stat-card.verde .stat-num { color:#10b981; }
 .stat-card.vermelho .stat-num { color:#ef4444; }
 .stat-card.amarelo .stat-num { color:#f59e0b; }
 .stat-card.azul .stat-num { color:#3b82f6; }
-
-.form-section { background:#fff; border-radius:8px; padding:24px; box-shadow:0 1px 3px rgba(0,0,0,.08); margin-bottom:20px; }
-.form-section h4 { font-size:15px; font-weight:600; color:#374151; margin:0 0 16px; padding-bottom:10px; border-bottom:1px solid #e5e7eb; }
-.form-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:16px; }
-.form-group label { display:block; font-size:13px; font-weight:500; color:#374151; margin-bottom:6px; }
-.form-group input, .form-group select, .form-group textarea { width:100%; padding:9px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:14px; color:#111827; background:#fff; box-sizing:border-box; transition:border-color .2s; }
-.form-group input:focus, .form-group select:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.1); }
-.form-group small { display:block; font-size:12px; color:#6b7280; margin-top:4px; }
 
 .toggle-group { display:flex; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid #f3f4f6; }
 .toggle-group:last-child { border-bottom:none; }

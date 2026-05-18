@@ -129,11 +129,7 @@ require_once '../includes/header.php';
 }
 .tab-link:hover { color: #333; background-color: #f5f5f5; border-radius: 4px 4px 0 0; }
 .tab-link.active { color: #007bff; border-bottom-color: #007bff; font-weight: bold; }
-
-/* ── Cards de stats ────────────────────────────────────────────────────── */
-.stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 22px; }
-.stat-card { background:#fff; border-radius:var(--border-radius); padding:16px 18px; box-shadow:var(--box-shadow); display:flex; align-items:center; gap:12px; }
-.stat-icon { width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+/* stat-cards/stat-card/stat-icon: definidos em assets/css/style.css */
 .stat-icon.yellow { background:#fff8e1; color:#f59e0b; }
 .stat-icon.blue   { background:#e3f0ff; color:#007bff; }
 .stat-icon.green  { background:#e6f9ee; color:#28a745; }
@@ -141,8 +137,7 @@ require_once '../includes/header.php';
 .stat-icon.teal   { background:#e0f7fa; color:#17a2b8; }
 .stat-value { font-size:20px; font-weight:700; line-height:1; }
 .stat-label { font-size:11px; color:var(--gray-600); margin-top:3px; }
-
-/* ── Status badges ─────────────────────────────────────────────────────── */
+/* ── Status badges ─────────────────────────────────────────────────────────────────── */
 .badge-aguardando  { background:#fff8e1; color:#f59e0b; }
 .badge-visualizado { background:#e3f0ff; color:#007bff; }
 .badge-faturado    { background:#e6f9ee; color:#28a745; }

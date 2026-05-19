@@ -141,17 +141,33 @@ $taps = $stmt->fetchAll();
 // Listar estabelecimentos e bebidas para o formulário
 $estabelecimentos = [];
 $bebidas = [];
+$bebidas_por_estab = []; // mapa: estabelecimento_id => [{id, name}]
+
 if (isAdminGeral()) {
-    $stmt = $conn->query("SELECT * FROM estabelecimentos WHERE status = 1 ORDER BY name");
+    $stmt = $conn->query("SELECT id, name FROM estabelecimentos WHERE status = 1 ORDER BY name");
     $estabelecimentos = $stmt->fetchAll();
-    
-    $stmt = $conn->query("SELECT * FROM bebidas ORDER BY name");
-    $bebidas = $stmt->fetchAll();
+
+    // Carregar TODAS as bebidas agrupadas por estabelecimento (para filtro JS)
+    $stmt = $conn->query("SELECT id, name, estabelecimento_id FROM bebidas ORDER BY name");
+    $todas_bebidas = $stmt->fetchAll();
+    foreach ($todas_bebidas as $b) {
+        $bebidas_por_estab[(int)$b['estabelecimento_id']][] = [
+            'id'   => (int)$b['id'],
+            'name' => $b['name']
+        ];
+    }
+    $bebidas = $todas_bebidas;
 } else {
     $estabelecimento_id = getEstabelecimentoId();
-    $stmt = $conn->prepare("SELECT * FROM bebidas WHERE estabelecimento_id = ? ORDER BY name");
+    $stmt = $conn->prepare("SELECT id, name, estabelecimento_id FROM bebidas WHERE estabelecimento_id = ? ORDER BY name");
     $stmt->execute([$estabelecimento_id]);
     $bebidas = $stmt->fetchAll();
+    foreach ($bebidas as $b) {
+        $bebidas_por_estab[(int)$b['estabelecimento_id']][] = [
+            'id'   => (int)$b['id'],
+            'name' => $b['name']
+        ];
+    }
 }
 
 require_once '../includes/header.php';
@@ -254,7 +270,7 @@ require_once '../includes/header.php';
                 <?php if (isAdminGeral()): ?>
                 <div class="form-group">
                     <label for="estabelecimento_id">Estabelecimento *</label>
-                    <select name="estabelecimento_id" id="estabelecimento_id" class="form-control" required>
+                    <select name="estabelecimento_id" id="estabelecimento_id" class="form-control" required onchange="filtrarBebidasPorEstabelecimento(this.value)">
                         <option value="">Selecione</option>
                         <?php foreach ($estabelecimentos as $estab): ?>
                         <option value="<?php echo $estab['id']; ?>"><?php echo $estab['name']; ?></option>
@@ -266,12 +282,42 @@ require_once '../includes/header.php';
                 <div class="form-group">
                     <label for="bebida_id">Bebida *</label>
                     <select name="bebida_id" id="bebida_id" class="form-control" required>
-                        <option value="">Selecione</option>
-                        <?php foreach ($bebidas as $bebida): ?>
-                        <option value="<?php echo $bebida['id']; ?>"><?php echo $bebida['name']; ?></option>
-                        <?php endforeach; ?>
+                        <option value="">Selecione o estabelecimento primeiro</option>
                     </select>
+                    <small id="bebida_hint" style="color:var(--gray-500);margin-top:4px;display:block;">
+                        Selecione um estabelecimento para ver as bebidas disponíveis.
+                    </small>
                 </div>
+                <!-- Dados de bebidas por estabelecimento (JSON embutido) -->
+                <script>
+                var bebidasPorEstab = <?php echo json_encode($bebidas_por_estab, JSON_UNESCAPED_UNICODE); ?>;
+                function filtrarBebidasPorEstabelecimento(estabId, bebidaIdSelecionada) {
+                    var sel = document.getElementById('bebida_id');
+                    var hint = document.getElementById('bebida_hint');
+                    sel.innerHTML = '';
+                    var estabIdInt = parseInt(estabId);
+                    if (!estabId || !bebidasPorEstab[estabIdInt] || bebidasPorEstab[estabIdInt].length === 0) {
+                        var opt = document.createElement('option');
+                        opt.value = '';
+                        opt.text = estabId ? '⚠️ Nenhuma bebida cadastrada para este estabelecimento' : 'Selecione o estabelecimento primeiro';
+                        sel.appendChild(opt);
+                        if (hint) hint.textContent = estabId ? 'Cadastre bebidas para este estabelecimento antes de criar uma TAP.' : 'Selecione um estabelecimento para ver as bebidas disponíveis.';
+                        return;
+                    }
+                    var placeholder = document.createElement('option');
+                    placeholder.value = '';
+                    placeholder.text = 'Selecione a bebida';
+                    sel.appendChild(placeholder);
+                    bebidasPorEstab[estabIdInt].forEach(function(b) {
+                        var opt = document.createElement('option');
+                        opt.value = b.id;
+                        opt.text = b.name;
+                        if (bebidaIdSelecionada && b.id == bebidaIdSelecionada) opt.selected = true;
+                        sel.appendChild(opt);
+                    });
+                    if (hint) hint.textContent = bebidasPorEstab[estabIdInt].length + ' bebida(s) disponível(is) para este estabelecimento.';
+                }
+                </script>
                 
                 <div class="form-group">
                     <label for="android_id">Android ID *</label>
@@ -345,7 +391,15 @@ function editTap(tap) {
     document.getElementById('modalTitle').textContent = 'Editar TAP';
     document.getElementById('formAction').value = 'update';
     document.getElementById('tapId').value = tap.id;
-    document.getElementById('bebida_id').value = tap.bebida_id;
+    // Filtrar bebidas pelo estabelecimento da TAP antes de setar o valor
+    if (document.getElementById('estabelecimento_id')) {
+        document.getElementById('estabelecimento_id').value = tap.estabelecimento_id;
+    }
+    if (typeof filtrarBebidasPorEstabelecimento === 'function') {
+        filtrarBebidasPorEstabelecimento(tap.estabelecimento_id, tap.bebida_id);
+    } else {
+        document.getElementById('bebida_id').value = tap.bebida_id;
+    }
     document.getElementById('android_id').value = tap.android_id;
     document.getElementById('android_id').readOnly = true;
     document.getElementById('MAC_ID').value = tap.esp32_mac || '';
@@ -377,6 +431,16 @@ document.querySelector('[onclick="openModal(\'modalTap\')"]').addEventListener('
     document.getElementById('senhaHelp').style.display = 'none';
     document.getElementById('reader_id_direto').value = '';
     document.getElementById('pairing_code').value = '';
+    // Resetar select de bebidas ao estado inicial
+    var selBebida = document.getElementById('bebida_id');
+    if (selBebida) {
+        selBebida.innerHTML = '<option value="">Selecione o estabelecimento primeiro</option>';
+    }
+    var hint = document.getElementById('bebida_hint');
+    if (hint) hint.textContent = 'Selecione um estabelecimento para ver as bebidas disponíveis.';
+    // Resetar select de estabelecimento
+    var selEstab = document.getElementById('estabelecimento_id');
+    if (selEstab) selEstab.value = '';
     loadSumupReaders();
 });
 

@@ -101,14 +101,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Listar bebidas
+// Filtro por estabelecimento (somente Admin Geral pode filtrar)
+$filtro_estab = isAdminGeral() ? (int)($_GET['estab'] ?? 0) : 0;
+
 if (isAdminGeral()) {
-    $stmt = $conn->query("
-        SELECT b.*, e.name as estabelecimento_name 
-        FROM bebidas b
-        INNER JOIN estabelecimentos e ON b.estabelecimento_id = e.id
-        ORDER BY b.created_at DESC
-    ");
+    if ($filtro_estab > 0) {
+        $stmt = $conn->prepare("
+            SELECT b.*, e.name as estabelecimento_name 
+            FROM bebidas b
+            INNER JOIN estabelecimentos e ON b.estabelecimento_id = e.id
+            WHERE b.estabelecimento_id = ?
+            ORDER BY b.created_at DESC
+        ");
+        $stmt->execute([$filtro_estab]);
+    } else {
+        $stmt = $conn->query("
+            SELECT b.*, e.name as estabelecimento_name 
+            FROM bebidas b
+            INNER JOIN estabelecimentos e ON b.estabelecimento_id = e.id
+            ORDER BY b.created_at DESC
+        ");
+    }
 } else {
     $estabelecimento_id = getEstabelecimentoId();
     $stmt = $conn->prepare("
@@ -145,6 +158,32 @@ require_once '../includes/header.php';
 
 <?php if ($error): ?>
     <div class="alert alert-danger"><?php echo $error; ?></div>
+<?php endif; ?>
+
+<?php if (isAdminGeral()): ?>
+<div class="card" style="margin-bottom: 16px;">
+    <div class="card-body" style="padding: 16px 20px;">
+        <form method="GET" action="" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <label style="font-weight: 600; margin: 0;"><i class="fas fa-filter"></i> Filtrar por Estabelecimento:</label>
+            <select name="estab" class="form-control" style="width: auto; min-width: 220px;" onchange="this.form.submit()">
+                <option value="0">Todos os estabelecimentos</option>
+                <?php foreach ($estabelecimentos as $estab): ?>
+                <option value="<?php echo $estab['id']; ?>" <?php echo $filtro_estab == $estab['id'] ? 'selected' : ''; ?>>
+                    <?php echo htmlspecialchars($estab['name']); ?>
+                </option>
+                <?php endforeach; ?>
+            </select>
+            <?php if ($filtro_estab > 0): ?>
+            <a href="bebidas.php" class="btn btn-secondary btn-sm"><i class="fas fa-times"></i> Limpar Filtro</a>
+            <?php endif; ?>
+            <?php if ($filtro_estab > 0): ?>
+            <span class="badge badge-info" style="font-size: 13px;">
+                <?php echo count($bebidas); ?> bebida(s) encontrada(s)
+            </span>
+            <?php endif; ?>
+        </form>
+    </div>
+</div>
 <?php endif; ?>
 
 <div class="card">

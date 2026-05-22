@@ -111,9 +111,10 @@ try {
             t.vencimento,
             t.cartao,
             t.last_call,
-            b.name  AS bebida,
-            b.image AS image,
-            b.preco AS preco
+            b.name            AS bebida,
+            b.image           AS image,
+            b.value           AS preco,
+            b.promotional_value AS preco_promocional
         FROM tap t
         INNER JOIN bebidas b ON t.bebida_id = b.id
         WHERE t.android_id = ?
@@ -167,10 +168,12 @@ try {
 } catch (RuntimeException $e) {
     Logger::debug($TAG, "Fluxo encerrado: " . $e->getMessage());
 } catch (Throwable $e) {
-    Logger::error($TAG, "Erro inesperado: " . $e->getMessage());
+    Logger::error($TAG, "Erro inesperado: " . $e->getMessage() . " | File: " . $e->getFile() . ":" . $e->getLine());
     $response = [
         'success' => false,
-        'error'   => 'Erro interno ao processar a solicitação.'
+        'error'   => defined('DEBUG_MODE') && DEBUG_MODE
+                        ? 'Erro interno: ' . $e->getMessage()
+                        : 'Erro interno ao processar a solicitação.'
     ];
     $httpCode = 500;
 }

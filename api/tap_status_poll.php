@@ -100,20 +100,45 @@ try {
     // ── Banco de Dados ────────────────────────────────────────────────────────
     $conn = getDBConnection();
 
+    // ── Query principal ───────────────────────────────────────────────────────
+    // COLUNAS OPCIONAIS: esp32_mac e last_call foram adicionadas via migration
+    // (migration_add_tap_esp32_fields.sql). Se a migration nao foi executada
+    // no servidor, a coluna nao existe e a query falharia com HTTP 500.
+    // Solucao: verificar quais colunas existem antes de montar a query.
+    //
+    // COLUNA INEXISTENTE: t.cartao nao existe na tabela tap.
+    // O verify_tap.php deriva 'cartao' de !empty(reader_id) — fazemos o mesmo.
+
+    $colsResult = $conn->query(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME   = 'tap'
+            AND COLUMN_NAME  IN ('esp32_mac','last_call','senha')"
+    );
+    $existingCols = $colsResult->fetchAll(PDO::FETCH_COLUMN);
+    $hasEsp32Mac  = in_array('esp32_mac',  $existingCols);
+    $hasLastCall  = in_array('last_call',  $existingCols);
+
+    $selectEsp32  = $hasEsp32Mac ? 't.esp32_mac' : "'' AS esp32_mac";
+    $selectLast   = $hasLastCall ? 't.last_call'  : 'NULL AS last_call';
+
+    Logger::debug($TAG, "Colunas opcionais: esp32_mac=" . ($hasEsp32Mac?'sim':'nao')
+                      . " | last_call=" . ($hasLastCall?'sim':'nao'));
+
     $stmt = $conn->prepare("
         SELECT
             t.id,
             t.status,
-            t.esp32_mac,
             t.volume,
             t.volume_consumido,
             t.volume_critico,
             t.vencimento,
-            t.cartao,
-            t.last_call,
-            b.name            AS bebida,
-            b.image           AS image,
-            b.value           AS preco,
+            t.reader_id,
+            $selectEsp32,
+            $selectLast,
+            b.name  AS bebida,
+            b.image AS image,
+            b.value AS preco,
             b.promotional_value AS preco_promocional
         FROM tap t
         INNER JOIN bebidas b ON t.bebida_id = b.id
@@ -124,26 +149,31 @@ try {
     $tap = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$tap) {
-        Logger::warning($TAG, "TAP não encontrada para android_id=$android_id");
+        Logger::warning($TAG, "TAP nao encontrada para android_id=$android_id");
         $response = [
             'success' => false,
-            'error'   => 'TAP não encontrada para este dispositivo.'
+            'error'   => 'TAP nao encontrada para este dispositivo.'
         ];
         $httpCode = 404;
         throw new RuntimeException('tap_not_found');
     }
 
-    // ── Atualiza last_call para rastreamento ──────────────────────────────────
-    $stmtUpdate = $conn->prepare(
-        "UPDATE tap SET last_call = NOW() WHERE id = ?"
-    );
-    $stmtUpdate->execute([$tap['id']]);
+    // ── Atualiza last_call para rastreamento (somente se coluna existir) ───────
+    if ($hasLastCall) {
+        $stmtUpdate = $conn->prepare(
+            "UPDATE tap SET last_call = NOW() WHERE id = ?"
+        );
+        $stmtUpdate->execute([$tap['id']]);
+    }
 
     $statusInt   = (int) $tap['status'];
     $statusLabel = $statusInt === 1 ? 'online' : 'offline';
+    // cartao: derivado de reader_id (igual ao verify_tap.php)
+    $temCartao   = !empty($tap['reader_id']);
+    $esp32Mac    = $tap['esp32_mac'] ?? '';
 
     Logger::debug($TAG,
-        "TAP id={$tap['id']} | status=$statusLabel | bebida={$tap['bebida']} | mac={$tap['esp32_mac']}"
+        "TAP id={$tap['id']} | status=$statusLabel | bebida={$tap['bebida']} | mac=$esp32Mac"
     );
 
     // ── Resposta ──────────────────────────────────────────────────────────────
@@ -153,10 +183,10 @@ try {
         'status'           => $statusInt,
         'status_label'     => $statusLabel,
         'bebida'           => $tap['bebida'],
-        'esp32_mac'        => $tap['esp32_mac'] ?? '',
+        'esp32_mac'        => $esp32Mac,
         'preco'            => (float) ($tap['preco'] ?? 0),
         'image'            => $tap['image'] ?? '',
-        'cartao'           => (bool) $tap['cartao'],
+        'cartao'           => $temCartao,
         'volume'           => (int) $tap['volume'],
         'volume_consumido' => (int) $tap['volume_consumido'],
         'volume_critico'   => (int) $tap['volume_critico'],

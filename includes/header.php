@@ -78,6 +78,13 @@ $menu_structure = [
         'page_key' => 'logs',
         'admin_only' => true
     ],
+    'app_update' => [
+        'title' => 'Atualização App',
+        'icon' => 'fas fa-mobile-alt',
+        'url' => 'admin/app_update.php',
+        'page_key' => 'app_update',
+        'admin_only' => true
+    ],
     'estoque' => [
         'title' => 'Estoque',
         'icon' => 'fas fa-boxes',

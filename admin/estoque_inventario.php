@@ -12,10 +12,11 @@ require_once '../includes/PatrimonioManager.php';
 
 requireAuth();
 
-$conn    = getDBConnection();
-$pm      = new PatrimonioManager($conn);
-$success = '';
-$error   = '';
+$conn          = getDBConnection();
+$user_estab_id = isAdminGeral() ? null : getEstabelecimentoId();
+$pm            = new PatrimonioManager($conn, $user_estab_id);
+$success       = '';
+$error         = '';
 
 // ── Processar ações POST ──────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -27,6 +28,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty(trim($_POST['descricao'] ?? ''))) {
             $error = 'A descrição do patrimônio é obrigatória.';
         } else {
+            // Garantir que o patrimônio seja vinculado ao estabelecimento do usuário
+            if ($user_estab_id && empty($_POST['estabelecimento_id'])) {
+                $_POST['estabelecimento_id'] = $user_estab_id;
+            }
             $resultado = $pm->criar($_POST, $_FILES, $user_id);
             if ($resultado['success']) {
                 $success = $resultado['message'];

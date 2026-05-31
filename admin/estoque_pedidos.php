@@ -12,8 +12,9 @@ require_once '../includes/auth.php';
 require_once '../includes/PedidoEstoqueManager.php';
 requireAuth();
 
-$conn    = getDBConnection();
-$pm      = new PedidoEstoqueManager($conn);
+$conn          = getDBConnection();
+$user_estab_id = isAdminGeral() ? null : getEstabelecimentoId();
+$pm            = new PedidoEstoqueManager($conn, $user_estab_id);
 $success = '';
 $error   = '';
 $user_id = (int)($_SESSION['user_id'] ?? 0);
@@ -82,17 +83,21 @@ if (!empty($_GET['msg'])) {
     $success = htmlspecialchars($_GET['msg']);
 }
 
-// ── Carregar dados ────────────────────────────────────────────────────────────
+// ── Carregar dados ────────────────────────────────────────────
 $filtros = [
-    'status'      => $_GET['status']      ?? '',
-    'busca'       => $_GET['busca']       ?? '',
-    'data_inicio' => $_GET['data_inicio'] ?? '',
-    'data_fim'    => $_GET['data_fim']    ?? '',
+    'status'             => $_GET['status']      ?? '',
+    'busca'              => $_GET['busca']       ?? '',
+    'data_inicio'        => $_GET['data_inicio'] ?? '',
+    'data_fim'           => $_GET['data_fim']    ?? '',
+    // Filtro por estabelecimento: franqueado sempre usa o seu; admin pode filtrar
+    'estabelecimento_id' => !isAdminGeral()
+        ? $user_estab_id
+        : (isset($_GET['estab']) && $_GET['estab'] !== '' ? (int)$_GET['estab'] : null),
 ];
-$pedidos         = $pm->listar($filtros);
+$pedidos          = $pm->listar($filtros);
 $estabelecimentos = $pm->listarEstabelecimentos();
-$produtos        = $pm->listarProdutos();
-$stats           = $pm->estatisticas();
+$produtos         = $pm->listarProdutos();
+$stats            = $pm->estatisticas($user_estab_id);
 
 // Pedido para visualização
 $pedido_ver   = null;

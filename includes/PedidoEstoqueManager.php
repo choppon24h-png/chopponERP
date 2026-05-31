@@ -10,10 +10,12 @@
 class PedidoEstoqueManager
 {
     private PDO $conn;
+    private ?int $estab_id; // null = Admin Geral (vê tudo)
 
-    public function __construct(PDO $conn)
+    public function __construct(PDO $conn, ?int $estab_id = null)
     {
-        $this->conn = $conn;
+        $this->conn     = $conn;
+        $this->estab_id = $estab_id;
         $this->garantirTabelas();
     }
 
@@ -353,6 +355,15 @@ class PedidoEstoqueManager
             $params[] = $filtros['data_fim'];
         }
 
+        // Filtro por estabelecimento (multi-estab)
+        if (!empty($filtros['estabelecimento_id'])) {
+            $where[]  = "p.estabelecimento_id = ?";
+            $params[] = (int)$filtros['estabelecimento_id'];
+        } elseif ($this->estab_id) {
+            $where[]  = "p.estabelecimento_id = ?";
+            $params[] = $this->estab_id;
+        }
+
         $sql = "
             SELECT p.*,
                    e.name AS estabelecimento_nome,
@@ -413,18 +424,24 @@ class PedidoEstoqueManager
 
     public function listarProdutos(): array
     {
+        $where = $this->estab_id
+            ? "WHERE estabelecimento_id = {$this->estab_id} AND ativo = 1"
+            : "WHERE ativo = 1";
         $stmt = $this->conn->query("
             SELECT id, codigo, nome, preco_venda, estoque_atual, categoria, tamanho_litros
             FROM estoque_produtos
-            WHERE ativo = 1
+            {$where}
             ORDER BY nome ASC
         ");
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function estatisticas(): array
+    public function estatisticas(?int $estab_id = null): array
     {
-        $stmt = $this->conn->query("
+        // Prioridade: parâmetro explícito > propriedade da instância
+        $eid   = $estab_id ?? $this->estab_id;
+        $where = $eid ? "WHERE estabelecimento_id = {$eid}" : "";
+        $stmt  = $this->conn->query("
             SELECT
                 COUNT(*) AS total,
                 SUM(status = 'aguardando')  AS aguardando,
@@ -433,6 +450,7 @@ class PedidoEstoqueManager
                 SUM(status = 'cancelado')   AS cancelado,
                 COALESCE(SUM(CASE WHEN status = 'faturado' THEN total ELSE 0 END), 0) AS valor_faturado
             FROM estoque_pedidos
+            {$where}
         ");
         return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
     }

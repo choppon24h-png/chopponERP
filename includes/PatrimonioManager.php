@@ -13,10 +13,12 @@
 class PatrimonioManager
 {
     private PDO $conn;
+    private ?int $estab_id; // null = Admin Geral (vê tudo)
 
-    public function __construct(PDO $conn)
+    public function __construct(PDO $conn, ?int $estab_id = null)
     {
-        $this->conn = $conn;
+        $this->conn     = $conn;
+        $this->estab_id = $estab_id;
         $this->garantirTabelas();
     }
 
@@ -57,9 +59,11 @@ class PatrimonioManager
               `updated_at`       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
               UNIQUE KEY `uk_numero_pat` (`numero_pat`),
+              `estabelecimento_id`   BIGINT UNSIGNED NULL,
               INDEX `idx_classificacao` (`classificacao`),
               INDEX `idx_status`        (`status`),
-              INDEX `idx_grupo_pat`     (`grupo_pat`)
+              INDEX `idx_grupo_pat`     (`grupo_pat`),
+              INDEX `idx_estabelecimento` (`estabelecimento_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         ");
 
@@ -255,6 +259,9 @@ class PatrimonioManager
             );
         }
 
+        // Estabelecimento: usa o da propriedade da instância ou o passado nos dados
+        $estab_id_insert = $this->estab_id ?? (!empty($dados['estabelecimento_id']) ? (int)$dados['estabelecimento_id'] : null);
+
         $stmt = $this->conn->prepare("
             INSERT INTO patrimonio
                 (numero_pat, descricao, classificacao, categoria, marca, modelo, numero_serie,
@@ -262,14 +269,14 @@ class PatrimonioManager
                  localizacao, responsavel, observacoes, status,
                  grupo_pat, quantidade_lote, sequencia_lote,
                  tem_preventiva, periodicidade_preventiva, proxima_preventiva,
-                 criado_por)
+                 estabelecimento_id, criado_por)
             VALUES
                 (?, ?, ?, ?, ?, ?, ?,
                  ?, ?, ?, ?, ?, ?,
                  ?, ?, ?, ?,
                  ?, ?, ?,
                  ?, ?, ?,
-                 ?)
+                 ?, ?)
         ");
 
         $ids = [];
@@ -298,6 +305,7 @@ class PatrimonioManager
                 $tem_preventiva,
                 $tem_preventiva ? ($dados['periodicidade_preventiva'] ?? null) : null,
                 $proxima_preventiva,
+                $estab_id_insert,
                 $user_id,
             ]);
             $ids[] = (int)$this->conn->lastInsertId();
@@ -432,6 +440,15 @@ class PatrimonioManager
             $params[] = (int)$filtros['tem_preventiva'];
         }
 
+        // Filtro por estabelecimento (multi-estab)
+        if (!empty($filtros['estabelecimento_id'])) {
+            $where[]  = "estabelecimento_id = ?";
+            $params[] = (int)$filtros['estabelecimento_id'];
+        } elseif ($this->estab_id) {
+            $where[]  = "estabelecimento_id = ?";
+            $params[] = $this->estab_id;
+        }
+
         $sql  = "SELECT * FROM patrimonio WHERE " . implode(' AND ', $where) . " ORDER BY numero_pat ASC";
         $stmt = $this->conn->prepare($sql);
         $stmt->execute($params);
@@ -516,9 +533,12 @@ class PatrimonioManager
         return $dt->format('Y-m-d');
     }
 
-    public function estatisticas(): array
+    public function estatisticas(?int $estab_id = null): array
     {
-        $stmt = $this->conn->query("
+        // Prioridade: parâmetro explícito > propriedade da instância
+        $eid   = $estab_id ?? $this->estab_id;
+        $extra = $eid ? " AND estabelecimento_id = {$eid}" : "";
+        $stmt  = $this->conn->query("
             SELECT
                 COUNT(*)                                        AS total,
                 SUM(classificacao = 'imobilizado')              AS total_imobilizado,
@@ -530,7 +550,7 @@ class PatrimonioManager
                 SUM(tem_preventiva = 1 AND proxima_preventiva <= CURDATE()) AS preventivas_vencidas,
                 COALESCE(SUM(valor_compra), 0)                  AS valor_total
             FROM patrimonio
-            WHERE status != 'baixado'
+            WHERE status != 'baixado'{$extra}
         ");
         return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
     }

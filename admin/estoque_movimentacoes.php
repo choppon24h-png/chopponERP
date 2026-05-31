@@ -13,8 +13,9 @@ require_once '../includes/EstoqueManager.php';
 
 requireAuth();
 
-$conn = getDBConnection();
-$estoqueManager = new EstoqueManager($conn);
+$conn           = getDBConnection();
+$user_estab_id  = isAdminGeral() ? null : getEstabelecimentoId();
+$estoqueManager = new EstoqueManager($conn, $user_estab_id);
 
 $success = '';
 $error = '';
@@ -45,6 +46,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 $filtros = [];
 $where = ["1=1"];
 $params = [];
+
+// ── Filtro obrigatório por estabelecimento ────────────────────────────────────
+if (!isAdminGeral()) {
+    // Franqueado: vê apenas movimentações dos produtos do seu estabelecimento
+    $where[] = "p.estabelecimento_id = ?";
+    $params[] = $user_estab_id;
+} elseif (!empty($_GET['estab'])) {
+    $where[] = "p.estabelecimento_id = ?";
+    $params[] = (int)$_GET['estab'];
+}
 
 if (!empty($_GET['produto_id'])) {
     $where[] = "m.produto_id = ?";

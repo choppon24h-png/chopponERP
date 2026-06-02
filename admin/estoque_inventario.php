@@ -327,30 +327,7 @@ require_once '../includes/header.php';
     font-size: 11px;
     font-weight: 700;
 }
-/* ── Tabs de navegação do módulo Estoque (igual demais módulos) ────────── */
-.tabs-navigation {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-    border-bottom: 2px solid #ddd;
-}
-.tab-link {
-    padding: 12px 20px;
-    text-decoration: none;
-    color: #666;
-    border-bottom: 3px solid transparent;
-    transition: all 0.3s;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-    white-space: nowrap;
-}
-.tab-link:hover {
-    color: #333;
-    background-color: #f5f5f5;
-    border-radius: 4px 4px 0 0;
-}
+/* tabs-navigation, tab-link: definidos em assets/css/style.css */
 .tab-link.active {
     color: #007bff;
     border-bottom-color: #007bff;

@@ -444,31 +444,7 @@ require_once '../includes/header.php';
 </div>
 
 <style>
-.tabs-navigation {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-    border-bottom: 2px solid #ddd;
-}
-
-.tab-link {
-    padding: 12px 20px;
-    text-decoration: none;
-    color: #666;
-    border-bottom: 3px solid transparent;
-    transition: all 0.3s;
-}
-
-.tab-link:hover {
-    color: #333;
-    background-color: #f5f5f5;
-}
-
-.tab-link.active {
-    color: #007bff;
-    border-bottom-color: #007bff;
-    font-weight: bold;
-}
+/* tabs-navigation, tab-link: definidos em assets/css/style.css */
 </style>
 
 <script>

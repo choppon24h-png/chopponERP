@@ -113,27 +113,7 @@ require_once '../includes/header.php';
 ?>
 
 <style>
-/* ── Tabs de navegação ─────────────────────────────────────────────────── */
-.tabs-navigation {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-    border-bottom: 2px solid #ddd;
-}
-.tab-link {
-    padding: 12px 20px;
-    text-decoration: none;
-    color: #666;
-    border-bottom: 3px solid transparent;
-    transition: all 0.3s;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-    white-space: nowrap;
-}
-.tab-link:hover { color: #333; background-color: #f5f5f5; border-radius: 4px 4px 0 0; }
-.tab-link.active { color: #007bff; border-bottom-color: #007bff; font-weight: bold; }
+/* tabs-navigation, tab-link: definidos em assets/css/style.css */
 /* stat-cards/stat-card/stat-icon/stats-grid: definidos em assets/css/style.css */
 .stat-icon.yellow { background:#fff8e1; color:#f59e0b; }
 .stat-icon.blue   { background:#e3f0ff; color:#007bff; }
@@ -162,15 +142,7 @@ require_once '../includes/header.php';
 .btn-pedido.purple { background:#7c3aed; color:#fff; }
 .btn-pedido.purple:hover { background:#6d28d9; }
 
-/* ── Modal ─────────────────────────────────────────────────────────────── */
-.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1050; align-items:center; justify-content:center; }
-.modal-overlay.active { display:flex; }
-.modal-box { background:#fff; border-radius:var(--border-radius); width:96%; max-width:860px; max-height:92vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,.25); }
-.modal-header { padding:16px 20px; background:#f8f9fa; border-bottom:1px solid var(--gray-300); display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:10; border-radius:var(--border-radius) var(--border-radius) 0 0; }
-.modal-header h4 { margin:0; font-size:16px; }
-.modal-body { padding:20px; }
-.modal-footer { padding:14px 20px; background:#f8f9fa; border-top:1px solid var(--gray-300); text-align:right; border-radius:0 0 var(--border-radius) var(--border-radius); }
-.btn-close-modal { background:none; border:none; font-size:24px; cursor:pointer; color:var(--gray-600); line-height:1; }
+/* modal-overlay, modal-box, btn-close-modal: definidos em assets/css/style.css */
 
 /* ── Formulário de pedido ──────────────────────────────────────────────── */
 .item-row { background:#f8f9fa; border-radius:8px; padding:12px; margin-bottom:10px; position:relative; }

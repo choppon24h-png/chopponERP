@@ -515,6 +515,11 @@ function calcularPreco100ml() {
     }
 }
 
+function verDetalhes(id) {
+    // Redireciona para a página de detalhes do produto
+    window.location.href = 'estoque_visao.php?produto_id=' + id;
+}
+
 // Fechar modal ao clicar fora
 document.getElementById('modalProduto').addEventListener('click', function(e) {
     if (e.target === this) fecharModalProduto();

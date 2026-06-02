@@ -6,6 +6,10 @@
  * Fluxo de status:
  *   aguardando → visualizado → faturado (baixa no estoque)
  *                           → cancelado
+ *
+ * Campos adicionais (via migration_pedidos_pagamento.sql):
+ *   - pagamento: forma de pagamento (pix, debito, credito, entrada_50_50)
+ *   - estab_origem_id: estabelecimento que criou o pedido (via migration_estoque_multiestab.sql)
  */
 class PedidoEstoqueManager
 {
@@ -29,6 +33,7 @@ class PedidoEstoqueManager
               `numero_pedido`     VARCHAR(20) NOT NULL,
               `tipo_destinatario` ENUM('estabelecimento','cliente_final') NOT NULL DEFAULT 'estabelecimento',
               `estabelecimento_id` BIGINT UNSIGNED NULL,
+              `estab_origem_id`   INT(11) NULL COMMENT 'Unidade que criou o pedido',
               `cliente_nome`      VARCHAR(255) NULL,
               `cliente_cpf_cnpj`  VARCHAR(20)  NULL,
               `cliente_email`     VARCHAR(255) NULL,
@@ -45,6 +50,7 @@ class PedidoEstoqueManager
               `subtotal`          DECIMAL(12,2) NOT NULL DEFAULT 0.00,
               `desconto`          DECIMAL(12,2) NOT NULL DEFAULT 0.00,
               `total`             DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `pagamento`         VARCHAR(60)  NULL DEFAULT 'pix' COMMENT 'Forma de pagamento',
               `status`            ENUM('aguardando','visualizado','faturado','cancelado') NOT NULL DEFAULT 'aguardando',
               `data_faturamento`  TIMESTAMP NULL,
               `observacoes`       TEXT NULL,
@@ -141,23 +147,25 @@ class PedidoEstoqueManager
         $entrega_taxa = $entrega ? (float)str_replace(['.', ','], ['', '.'], $dados['entrega_taxa'] ?? '0') : 0;
         $desconto     = (float)str_replace(['.', ','], ['', '.'], $dados['desconto'] ?? '0');
         $total        = $subtotal + $entrega_taxa - $desconto;
+        $pagamento    = trim($dados['pagamento'] ?? 'pix') ?: 'pix';
 
         $numero = $this->gerarNumeroPedido();
 
         $stmt = $this->conn->prepare("
             INSERT INTO estoque_pedidos
-                (numero_pedido, tipo_destinatario, estabelecimento_id,
+                (numero_pedido, tipo_destinatario, estabelecimento_id, estab_origem_id,
                  cliente_nome, cliente_cpf_cnpj, cliente_email, cliente_telefone,
                  entrega, entrega_cep, entrega_logradouro, entrega_numero,
                  entrega_complemento, entrega_bairro, entrega_cidade, entrega_estado, entrega_taxa,
-                 subtotal, desconto, total, observacoes, criado_por)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 subtotal, desconto, total, pagamento, observacoes, criado_por)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ");
 
         $stmt->execute([
             $numero,
             $dados['tipo_destinatario'],
             $dados['tipo_destinatario'] === 'estabelecimento' ? (int)$dados['estabelecimento_id'] : null,
+            $this->estab_id,   // estabelecimento que criou o pedido
             trim($dados['cliente_nome']      ?? '') ?: null,
             trim($dados['cliente_cpf_cnpj']  ?? '') ?: null,
             trim($dados['cliente_email']     ?? '') ?: null,
@@ -174,6 +182,7 @@ class PedidoEstoqueManager
             $subtotal,
             $desconto,
             $total,
+            $pagamento,
             trim($dados['observacoes'] ?? '') ?: null,
             $user_id,
         ]);
@@ -206,6 +215,127 @@ class PedidoEstoqueManager
             'message'   => "Pedido {$numero} criado com sucesso!",
             'pedido_id' => $pedido_id,
             'numero'    => $numero,
+        ];
+    }
+
+    // ── Editar pedido (apenas status aguardando ou visualizado) ───────────────
+
+    /**
+     * Edita um pedido existente (não permite editar pedidos faturados ou cancelados).
+     *
+     * @param int   $pedido_id
+     * @param array $dados  Campos do formulário ($_POST)
+     * @param int   $user_id
+     * @return array ['success'=>bool, 'message'=>string]
+     */
+    public function editar(int $pedido_id, array $dados, int $user_id): array
+    {
+        $pedido = $this->buscarPorId($pedido_id);
+        if (!$pedido) {
+            return ['success' => false, 'message' => 'Pedido não encontrado.'];
+        }
+        if ($pedido['status'] === 'faturado') {
+            return ['success' => false, 'message' => 'Pedido já faturado não pode ser editado.'];
+        }
+        if ($pedido['status'] === 'cancelado') {
+            return ['success' => false, 'message' => 'Pedido cancelado não pode ser editado.'];
+        }
+        if (empty($dados['itens']) || !is_array($dados['itens'])) {
+            return ['success' => false, 'message' => 'Adicione pelo menos um produto ao pedido.'];
+        }
+
+        // Calcular totais
+        $subtotal = 0;
+        foreach ($dados['itens'] as $item) {
+            $qty   = (int)($item['quantidade'] ?? 0);
+            $preco = (float)str_replace(['.', ','], ['', '.'], $item['preco_unitario'] ?? '0');
+            if ($qty > 0) {
+                $subtotal += $qty * $preco;
+            }
+        }
+
+        $entrega      = !empty($dados['entrega']) ? 1 : 0;
+        $entrega_taxa = $entrega ? (float)str_replace(['.', ','], ['', '.'], $dados['entrega_taxa'] ?? '0') : 0;
+        $desconto     = (float)str_replace(['.', ','], ['', '.'], $dados['desconto'] ?? '0');
+        $total        = $subtotal + $entrega_taxa - $desconto;
+        $pagamento    = trim($dados['pagamento'] ?? 'pix') ?: 'pix';
+
+        $stmt = $this->conn->prepare("
+            UPDATE estoque_pedidos SET
+                tipo_destinatario   = ?,
+                estabelecimento_id  = ?,
+                cliente_nome        = ?,
+                cliente_cpf_cnpj    = ?,
+                cliente_email       = ?,
+                cliente_telefone    = ?,
+                entrega             = ?,
+                entrega_cep         = ?,
+                entrega_logradouro  = ?,
+                entrega_numero      = ?,
+                entrega_complemento = ?,
+                entrega_bairro      = ?,
+                entrega_cidade      = ?,
+                entrega_estado      = ?,
+                entrega_taxa        = ?,
+                subtotal            = ?,
+                desconto            = ?,
+                total               = ?,
+                pagamento           = ?,
+                observacoes         = ?,
+                updated_at          = NOW()
+            WHERE id = ?
+        ");
+
+        $stmt->execute([
+            $dados['tipo_destinatario'],
+            $dados['tipo_destinatario'] === 'estabelecimento' ? (int)$dados['estabelecimento_id'] : null,
+            trim($dados['cliente_nome']      ?? '') ?: null,
+            trim($dados['cliente_cpf_cnpj']  ?? '') ?: null,
+            trim($dados['cliente_email']     ?? '') ?: null,
+            trim($dados['cliente_telefone']  ?? '') ?: null,
+            $entrega,
+            trim($dados['entrega_cep']          ?? '') ?: null,
+            trim($dados['entrega_logradouro']    ?? '') ?: null,
+            trim($dados['entrega_numero']        ?? '') ?: null,
+            trim($dados['entrega_complemento']   ?? '') ?: null,
+            trim($dados['entrega_bairro']        ?? '') ?: null,
+            trim($dados['entrega_cidade']        ?? '') ?: null,
+            trim($dados['entrega_estado']        ?? '') ?: null,
+            $entrega_taxa,
+            $subtotal,
+            $desconto,
+            $total,
+            $pagamento,
+            trim($dados['observacoes'] ?? '') ?: null,
+            $pedido_id,
+        ]);
+
+        // Substituir itens: apagar os antigos e reinserir
+        $this->conn->prepare("DELETE FROM estoque_pedido_itens WHERE pedido_id = ?")->execute([$pedido_id]);
+
+        $stmt_item = $this->conn->prepare("
+            INSERT INTO estoque_pedido_itens (pedido_id, produto_id, quantidade, preco_unitario, subtotal, observacoes)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ");
+
+        foreach ($dados['itens'] as $item) {
+            $qty   = (int)($item['quantidade'] ?? 0);
+            $preco = (float)str_replace(['.', ','], ['', '.'], $item['preco_unitario'] ?? '0');
+            if ($qty > 0 && !empty($item['produto_id'])) {
+                $stmt_item->execute([
+                    $pedido_id,
+                    (int)$item['produto_id'],
+                    $qty,
+                    $preco,
+                    $qty * $preco,
+                    trim($item['obs'] ?? '') ?: null,
+                ]);
+            }
+        }
+
+        return [
+            'success' => true,
+            'message' => "Pedido {$pedido['numero_pedido']} atualizado com sucesso!",
         ];
     }
 
@@ -366,10 +496,15 @@ class PedidoEstoqueManager
 
         $sql = "
             SELECT p.*,
-                   e.name AS estabelecimento_nome,
-                   u.name AS criado_por_nome
+                   e.name    AS estabelecimento_nome,
+                   eo.name   AS origem_nome,
+                   eo.document AS origem_document,
+                   eo.phone  AS origem_phone,
+                   eo.address AS origem_address,
+                   u.name    AS criado_por_nome
             FROM estoque_pedidos p
-            LEFT JOIN estabelecimentos e ON e.id = p.estabelecimento_id
+            LEFT JOIN estabelecimentos e  ON e.id  = p.estabelecimento_id
+            LEFT JOIN estabelecimentos eo ON eo.id = p.estab_origem_id
             LEFT JOIN users u ON u.id = p.criado_por
             WHERE " . implode(' AND ', $where) . "
             ORDER BY p.created_at DESC
@@ -384,14 +519,19 @@ class PedidoEstoqueManager
     {
         $stmt = $this->conn->prepare("
             SELECT p.*,
-                   e.name AS estabelecimento_nome,
+                   e.name     AS estabelecimento_nome,
                    e.document AS estabelecimento_document,
-                   e.address AS estabelecimento_address,
-                   e.phone AS estabelecimento_phone,
-                   u.name AS criado_por_nome,
-                   f.name AS faturado_por_nome
+                   e.address  AS estabelecimento_address,
+                   e.phone    AS estabelecimento_phone,
+                   eo.name    AS origem_nome,
+                   eo.document AS origem_document,
+                   eo.address AS origem_address,
+                   eo.phone   AS origem_phone,
+                   u.name  AS criado_por_nome,
+                   f.name  AS faturado_por_nome
             FROM estoque_pedidos p
-            LEFT JOIN estabelecimentos e ON e.id = p.estabelecimento_id
+            LEFT JOIN estabelecimentos e  ON e.id  = p.estabelecimento_id
+            LEFT JOIN estabelecimentos eo ON eo.id = p.estab_origem_id
             LEFT JOIN users u ON u.id = p.criado_por
             LEFT JOIN users f ON f.id = p.faturado_por
             WHERE p.id = ?
@@ -418,7 +558,7 @@ class PedidoEstoqueManager
 
     public function listarEstabelecimentos(): array
     {
-        $stmt = $this->conn->query("SELECT id, name, document, address FROM estabelecimentos WHERE status = 1 ORDER BY name");
+        $stmt = $this->conn->query("SELECT id, name, document, address, phone FROM estabelecimentos WHERE status = 1 ORDER BY name");
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 

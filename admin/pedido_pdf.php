@@ -1,16 +1,18 @@
 <?php
 /**
  * pedido_pdf.php
- * Gera o PDF do pedido de estoque com layout personalizado Choppon.
- * Usa HTML puro com header Content-Type para impressão/download.
+ * Gera o PDF/impressão do pedido de estoque.
+ * Cabeçalho com dados do estabelecimento emissor (nome, CNPJ, telefone, endereço).
+ * Campo de pagamento e texto fixo de condições de entrega.
  */
 require_once '../includes/config.php';
 require_once '../includes/auth.php';
 require_once '../includes/PedidoEstoqueManager.php';
 requireAuth();
 
-$conn = getDBConnection();
-$pm   = new PedidoEstoqueManager($conn);
+$conn          = getDBConnection();
+$user_estab_id = isAdminGeral() ? null : getEstabelecimentoId();
+$pm            = new PedidoEstoqueManager($conn, $user_estab_id);
 
 $pedido_id = (int)($_GET['id'] ?? 0);
 if (!$pedido_id) {
@@ -26,6 +28,24 @@ if (!$pedido) {
 
 $itens = $pm->buscarItens($pedido_id);
 
+// ── Dados do estabelecimento EMISSOR (origem do pedido) ───────────────────
+// Prioridade: estab_origem_id do pedido → estabelecimento do usuário logado → primeiro ativo
+$emissor_id = $pedido['estab_origem_id'] ?? $user_estab_id;
+$emissor    = null;
+if ($emissor_id) {
+    $stmt_em = $conn->prepare("SELECT name, document, phone, address FROM estabelecimentos WHERE id = ? LIMIT 1");
+    $stmt_em->execute([$emissor_id]);
+    $emissor = $stmt_em->fetch(PDO::FETCH_ASSOC);
+}
+if (!$emissor) {
+    $stmt_em = $conn->query("SELECT name, document, phone, address FROM estabelecimentos WHERE status = 1 ORDER BY id ASC LIMIT 1");
+    $emissor = $stmt_em->fetch(PDO::FETCH_ASSOC);
+}
+$emissor_nome = $emissor['name']     ?? 'Chopp On Tap';
+$emissor_cnpj = $emissor['document'] ?? '';
+$emissor_tel  = $emissor['phone']    ?? '';
+$emissor_end  = $emissor['address']  ?? '';
+
 // ── Dados do destinatário ─────────────────────────────────────────────────
 if ($pedido['tipo_destinatario'] === 'estabelecimento') {
     $dest_nome     = $pedido['estabelecimento_nome']     ?? '—';
@@ -34,14 +54,24 @@ if ($pedido['tipo_destinatario'] === 'estabelecimento') {
     $dest_telefone = $pedido['estabelecimento_phone']    ?? '';
     $dest_end      = $pedido['estabelecimento_address']  ?? '';
 } else {
-    $dest_nome     = $pedido['cliente_nome']      ?? '—';
-    $dest_doc      = $pedido['cliente_cpf_cnpj']  ?? '';
-    $dest_email    = $pedido['cliente_email']      ?? '';
-    $dest_telefone = $pedido['cliente_telefone']   ?? '';
+    $dest_nome     = $pedido['cliente_nome']     ?? '—';
+    $dest_doc      = $pedido['cliente_cpf_cnpj'] ?? '';
+    $dest_email    = $pedido['cliente_email']    ?? '';
+    $dest_telefone = $pedido['cliente_telefone'] ?? '';
     $dest_end      = '';
 }
 
-// ── Status label ──────────────────────────────────────────────────────────
+// ── Pagamento ─────────────────────────────────────────────────────────────
+$pagamento_labels = [
+    'pix'           => 'PIX',
+    'debito'        => 'Cartão de Débito',
+    'credito'       => 'Cartão de Crédito',
+    'entrada_50_50' => 'Entrada 50% + 50% na Entrega',
+];
+$pag_key   = $pedido['pagamento'] ?? 'pix';
+$pag_label = $pagamento_labels[$pag_key] ?? $pag_key;
+
+// ── Status label e cor ────────────────────────────────────────────────────
 $status_label = match($pedido['status']) {
     'aguardando'  => 'AGUARDANDO',
     'visualizado' => 'VISUALIZADO',
@@ -61,63 +91,74 @@ $status_color = match($pedido['status']) {
 $entrega_str = '';
 if ($pedido['entrega']) {
     $partes = array_filter([
-        trim($pedido['entrega_logradouro'] ?? ''),
-        trim($pedido['entrega_numero']     ?? ''),
-        trim($pedido['entrega_complemento']?? ''),
-        trim($pedido['entrega_bairro']     ?? ''),
-        trim($pedido['entrega_cidade']     ?? ''),
-        trim($pedido['entrega_estado']     ?? ''),
-        trim($pedido['entrega_cep']        ?? ''),
+        trim($pedido['entrega_logradouro']  ?? ''),
+        trim($pedido['entrega_numero']      ?? ''),
+        trim($pedido['entrega_complemento'] ?? ''),
+        trim($pedido['entrega_bairro']      ?? ''),
+        trim($pedido['entrega_cidade']      ?? ''),
+        trim($pedido['entrega_estado']      ?? ''),
+        trim($pedido['entrega_cep']         ?? ''),
     ]);
     $entrega_str = implode(', ', $partes);
 }
 
-// Caminho absoluto do logo
+// ── Logo em base64 ────────────────────────────────────────────────────────
 $logo_path = realpath(__DIR__ . '/../assets/images/logo.png');
 $logo_b64  = '';
 if ($logo_path && file_exists($logo_path)) {
     $logo_b64 = 'data:image/png;base64,' . base64_encode(file_get_contents($logo_path));
 }
 
-// ── Gerar HTML para impressão ─────────────────────────────────────────────
 header('Content-Type: text/html; charset=utf-8');
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Pedido <?= htmlspecialchars($pedido['numero_pedido']) ?> — Chopp On Tap</title>
+<title>Pedido <?= htmlspecialchars($pedido['numero_pedido']) ?> — <?= htmlspecialchars($emissor_nome) ?></title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #222; background: #fff; }
 
-  /* Botões de ação (não aparecem na impressão) */
+  /* Barra de ações (não imprime) */
   .no-print { display: flex; gap: 10px; padding: 14px 20px; background: #f0f4f8; border-bottom: 1px solid #ddd; }
-  .btn-print { padding: 9px 20px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+  .btn-print { padding: 9px 20px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
   .btn-print.blue { background: #007bff; color: #fff; }
-  .btn-print.gray { background: #6c757d; color: #fff; text-decoration: none; }
+  .btn-print.gray { background: #6c757d; color: #fff; }
   @media print { .no-print { display: none !important; } body { padding: 0; } }
 
   /* Layout do documento */
-  .doc { max-width: 800px; margin: 0 auto; padding: 30px 30px 40px; }
+  .doc { max-width: 820px; margin: 0 auto; padding: 30px 30px 40px; }
 
-  /* Cabeçalho */
-  .doc-header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 3px solid #0066cc; margin-bottom: 22px; }
-  .doc-header .brand { display: flex; align-items: center; gap: 14px; }
-  .doc-header .brand img { height: 60px; }
-  .doc-header .brand-name { font-size: 22px; font-weight: 700; color: #0066cc; }
-  .doc-header .brand-sub  { font-size: 11px; color: #666; margin-top: 2px; }
+  /* Cabeçalho do emissor */
+  .doc-header { background: linear-gradient(135deg, #0066cc, #004499); color: #fff; border-radius: 10px; padding: 22px 26px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+  .doc-header .emissor { display: flex; align-items: center; gap: 16px; }
+  .doc-header .emissor img { height: 58px; background: #fff; border-radius: 6px; padding: 4px; }
+  .doc-header .emissor-logo-placeholder { width: 58px; height: 58px; background: rgba(255,255,255,.2); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 22px; }
+  .doc-header .emissor-nome { font-size: 20px; font-weight: 700; }
+  .doc-header .emissor-detalhe { font-size: 12px; opacity: .85; margin-top: 2px; }
   .doc-header .pedido-info { text-align: right; }
-  .doc-header .pedido-num  { font-size: 24px; font-weight: 700; color: #0066cc; font-family: monospace; }
-  .doc-header .pedido-data { font-size: 12px; color: #666; margin-top: 3px; }
+  .doc-header .pedido-num  { font-size: 26px; font-weight: 700; font-family: monospace; }
+  .doc-header .pedido-data { font-size: 12px; opacity: .8; margin-top: 3px; }
   .status-badge { display: inline-block; padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; color: #fff; margin-top: 6px; background: <?= $status_color ?>; }
 
   /* Seções */
   .section { margin-bottom: 20px; }
-  .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: #666; border-bottom: 1px solid #e0e0e0; padding-bottom: 5px; margin-bottom: 10px; font-weight: 600; }
+  .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: #555; border-bottom: 2px solid #0066cc; padding-bottom: 5px; margin-bottom: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
   .info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .info-item .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: .4px; }
   .info-item .value { font-size: 13px; font-weight: 600; margin-top: 2px; }
+
+  /* Pagamento */
+  .pag-box { display: inline-flex; align-items: center; gap: 10px; background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 8px; padding: 10px 16px; }
+  .pag-box.debito   { background: #e3f2fd; border-color: #90caf9; }
+  .pag-box.credito  { background: #f3e5f5; border-color: #ce93d8; }
+  .pag-box.entrada  { background: #fff8e1; border-color: #ffe082; }
+  .pag-label { font-size: 15px; font-weight: 700; color: #1b5e20; }
+  .pag-box.debito .pag-label   { color: #0d47a1; }
+  .pag-box.credito .pag-label  { color: #4a148c; }
+  .pag-box.entrada .pag-label  { color: #e65100; }
+  .pix-key { font-family: monospace; font-size: 18px; font-weight: 700; color: #1b5e20; letter-spacing: 1px; margin-top: 4px; }
 
   /* Tabela de itens */
   .items-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -125,16 +166,18 @@ header('Content-Type: text/html; charset=utf-8');
   .items-table thead th { padding: 9px 10px; text-align: left; font-weight: 600; }
   .items-table tbody tr:nth-child(even) { background: #f5f8ff; }
   .items-table tbody td { padding: 8px 10px; border-bottom: 1px solid #eee; }
-  .items-table tfoot tr { background: #f0f4f8; font-weight: 700; }
-  .items-table tfoot td { padding: 8px 10px; }
 
   /* Totais */
-  .totals-box { margin-left: auto; width: 280px; background: linear-gradient(135deg, #0066cc, #004499); color: #fff; border-radius: 10px; padding: 16px 20px; margin-top: 16px; }
-  .total-line { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+  .totals-box { margin-left: auto; width: 300px; background: linear-gradient(135deg, #0066cc, #004499); color: #fff; border-radius: 10px; padding: 16px 20px; margin-top: 16px; }
+  .total-line  { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
   .total-final { display: flex; justify-content: space-between; padding-top: 10px; margin-top: 8px; border-top: 1px solid rgba(255,255,255,.3); font-size: 18px; font-weight: 700; }
 
   /* Entrega */
-  .entrega-box { background: #e8f5e9; border-left: 4px solid #28a745; border-radius: 6px; padding: 12px 16px; }
+  .entrega-box { background: #e8f5e9; border-left: 4px solid #28a745; border-radius: 6px; padding: 12px 16px; margin-bottom: 10px; }
+
+  /* Aviso operacional */
+  .aviso-box { background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #856404; margin-top: 10px; }
+  .aviso-box strong { display: block; margin-bottom: 4px; font-size: 13px; }
 
   /* Rodapé */
   .doc-footer { margin-top: 30px; padding-top: 14px; border-top: 1px solid #e0e0e0; display: flex; justify-content: space-between; font-size: 11px; color: #888; }
@@ -153,18 +196,25 @@ header('Content-Type: text/html; charset=utf-8');
 
 <div class="doc">
 
-    <!-- Cabeçalho do documento -->
+    <!-- ── Cabeçalho com dados do estabelecimento EMISSOR ── -->
     <div class="doc-header">
-        <div class="brand">
+        <div class="emissor">
             <?php if ($logo_b64): ?>
-            <img src="<?= $logo_b64 ?>" alt="Choppon">
+            <img src="<?= $logo_b64 ?>" alt="<?= htmlspecialchars($emissor_nome) ?>">
             <?php else: ?>
-            <div style="width:60px;height:60px;background:#0066cc;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:18px;">C</div>
+            <div class="emissor-logo-placeholder">C</div>
             <?php endif; ?>
             <div>
-                <div class="brand-name">Chopp On Tap</div>
-                <div class="brand-sub">Sistema de Gestão ERP</div>
-                <div class="brand-sub">ochoppoficial.com.br</div>
+                <div class="emissor-nome"><?= htmlspecialchars($emissor_nome) ?></div>
+                <?php if ($emissor_cnpj): ?>
+                <div class="emissor-detalhe">CNPJ: <?= htmlspecialchars($emissor_cnpj) ?></div>
+                <?php endif; ?>
+                <?php if ($emissor_tel): ?>
+                <div class="emissor-detalhe">Tel: <?= htmlspecialchars($emissor_tel) ?></div>
+                <?php endif; ?>
+                <?php if ($emissor_end): ?>
+                <div class="emissor-detalhe" style="font-size:11px;opacity:.75;"><?= htmlspecialchars($emissor_end) ?></div>
+                <?php endif; ?>
             </div>
         </div>
         <div class="pedido-info">
@@ -178,10 +228,39 @@ header('Content-Type: text/html; charset=utf-8');
         </div>
     </div>
 
-    <!-- Dados do destinatário -->
+    <!-- ── Forma de Pagamento ── -->
+    <div class="section">
+        <div class="section-title">💳 Forma de Pagamento</div>
+        <?php
+        $pag_box_class = match($pag_key) {
+            'debito'        => 'debito',
+            'credito'       => 'credito',
+            'entrada_50_50' => 'entrada',
+            default         => '',
+        };
+        ?>
+        <div class="pag-box <?= $pag_box_class ?>">
+            <?php if ($pag_key === 'pix'): ?>
+            <svg width="28" height="28" viewBox="0 0 512 512" fill="#1b5e20"><path d="M392.4 119.6c-17.5-17.5-45.9-17.5-63.4 0L256 192.6l-73-73c-17.5-17.5-45.9-17.5-63.4 0L55 184.2c-17.5 17.5-17.5 45.9 0 63.4l73 73-73 73c-17.5 17.5-17.5 45.9 0 63.4l64.6 64.6c17.5 17.5 45.9 17.5 63.4 0l73-73 73 73c17.5 17.5 45.9 17.5 63.4 0l64.6-64.6c17.5-17.5 17.5-45.9 0-63.4l-73-73 73-73c17.5-17.5 17.5-45.9 0-63.4z"/></svg>
+            <div>
+                <div class="pag-label">PIX</div>
+                <?php if ($emissor_cnpj): ?>
+                <div class="pix-key"><?= htmlspecialchars($emissor_cnpj) ?></div>
+                <div style="font-size:11px;color:#388e3c;margin-top:2px;">Chave PIX: CNPJ do estabelecimento</div>
+                <?php endif; ?>
+            </div>
+            <?php else: ?>
+            <div>
+                <div class="pag-label"><?= htmlspecialchars($pag_label) ?></div>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- ── Dados do destinatário ── -->
     <div class="section">
         <div class="section-title">
-            <?= $pedido['tipo_destinatario'] === 'estabelecimento' ? '🏪 Estabelecimento' : '👤 Cliente Final' ?>
+            <?= $pedido['tipo_destinatario'] === 'estabelecimento' ? '🏪 Estabelecimento Destinatário' : '👤 Cliente Final' ?>
         </div>
         <div class="info-grid">
             <div class="info-item">
@@ -215,7 +294,7 @@ header('Content-Type: text/html; charset=utf-8');
         </div>
     </div>
 
-    <!-- Entrega -->
+    <!-- ── Entrega ── -->
     <?php if ($pedido['entrega'] && $entrega_str): ?>
     <div class="section">
         <div class="section-title">🚚 Endereço de Entrega</div>
@@ -225,10 +304,15 @@ header('Content-Type: text/html; charset=utf-8');
                 Taxa: R$ <?= number_format($pedido['entrega_taxa'], 2, ',', '.') ?>
             </span>
         </div>
+        <!-- Aviso operacional fixo -->
+        <div class="aviso-box">
+            <strong>⚠️ Condições de Entrega</strong>
+            Não subimos escadas para entrega. O ponto deverá ser de 127 volts, tomada única, sem extensão ou adaptador.
+        </div>
     </div>
     <?php endif; ?>
 
-    <!-- Itens do pedido -->
+    <!-- ── Itens do pedido ── -->
     <div class="section">
         <div class="section-title">📦 Itens do Pedido</div>
         <table class="items-table">
@@ -250,7 +334,7 @@ header('Content-Type: text/html; charset=utf-8');
                 <td><code><?= htmlspecialchars($item['produto_codigo']) ?></code></td>
                 <td>
                     <strong><?= htmlspecialchars($item['produto_nome']) ?></strong>
-                    <?php if ($item['observacoes']): ?>
+                    <?php if (!empty($item['observacoes'])): ?>
                     <br><small style="color:#888;"><?= htmlspecialchars($item['observacoes']) ?></small>
                     <?php endif; ?>
                 </td>
@@ -264,7 +348,7 @@ header('Content-Type: text/html; charset=utf-8');
         </table>
     </div>
 
-    <!-- Totais -->
+    <!-- ── Totais ── -->
     <div class="totals-box">
         <div class="total-line">
             <span>Subtotal dos Produtos</span>
@@ -288,7 +372,7 @@ header('Content-Type: text/html; charset=utf-8');
         </div>
     </div>
 
-    <!-- Observações -->
+    <!-- ── Observações ── -->
     <?php if ($pedido['observacoes']): ?>
     <div class="section" style="margin-top:20px;">
         <div class="section-title">💬 Observações</div>
@@ -296,9 +380,9 @@ header('Content-Type: text/html; charset=utf-8');
     </div>
     <?php endif; ?>
 
-    <!-- Rodapé -->
+    <!-- ── Rodapé ── -->
     <div class="doc-footer">
-        <span>Chopp On Tap — Sistema ERP | ochoppoficial.com.br</span>
+        <span><?= htmlspecialchars($emissor_nome) ?><?php if ($emissor_cnpj): ?> — CNPJ: <?= htmlspecialchars($emissor_cnpj) ?><?php endif; ?></span>
         <span>Documento gerado em <?= date('d/m/Y \à\s H:i') ?></span>
     </div>
 

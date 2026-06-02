@@ -149,16 +149,18 @@ header('Content-Type: text/html; charset=utf-8');
   .info-item .label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: .4px; }
   .info-item .value { font-size: 13px; font-weight: 600; margin-top: 2px; }
 
-  /* Pagamento */
-  .pag-box { display: inline-flex; align-items: center; gap: 10px; background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 8px; padding: 10px 16px; }
-  .pag-box.debito   { background: #e3f2fd; border-color: #90caf9; }
-  .pag-box.credito  { background: #f3e5f5; border-color: #ce93d8; }
-  .pag-box.entrada  { background: #fff8e1; border-color: #ffe082; }
-  .pag-label { font-size: 15px; font-weight: 700; color: #1b5e20; }
-  .pag-box.debito .pag-label   { color: #0d47a1; }
-  .pag-box.credito .pag-label  { color: #4a148c; }
-  .pag-box.entrada .pag-label  { color: #e65100; }
-  .pix-key { font-family: monospace; font-size: 18px; font-weight: 700; color: #1b5e20; letter-spacing: 1px; margin-top: 4px; }
+  /* Pagamento — linha única compacta */
+  .pag-row { display: flex; align-items: center; gap: 12px; background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 8px; padding: 10px 16px; flex-wrap: wrap; }
+  .pag-row.debito  { background: #e3f2fd; border-color: #90caf9; }
+  .pag-row.credito { background: #f3e5f5; border-color: #ce93d8; }
+  .pag-row.entrada { background: #fff8e1; border-color: #ffe082; }
+  .pag-label { font-size: 14px; font-weight: 700; color: #1b5e20; white-space: nowrap; }
+  .pag-row.debito .pag-label  { color: #0d47a1; }
+  .pag-row.credito .pag-label { color: #4a148c; }
+  .pag-row.entrada .pag-label { color: #e65100; }
+  .pag-sep { color: #aaa; font-size: 16px; }
+  .pix-key { font-family: monospace; font-size: 16px; font-weight: 700; color: #1b5e20; letter-spacing: 1px; }
+  .pix-hint { font-size: 11px; color: #388e3c; }
 
   /* Tabela de itens */
   .items-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -228,31 +230,28 @@ header('Content-Type: text/html; charset=utf-8');
         </div>
     </div>
 
-    <!-- ── Forma de Pagamento ── -->
+    <!-- ── Forma de Pagamento — linha única compacta ── -->
     <div class="section">
         <div class="section-title">💳 Forma de Pagamento</div>
         <?php
-        $pag_box_class = match($pag_key) {
+        $pag_row_class = match($pag_key) {
             'debito'        => 'debito',
             'credito'       => 'credito',
             'entrada_50_50' => 'entrada',
             default         => '',
         };
         ?>
-        <div class="pag-box <?= $pag_box_class ?>">
+        <div class="pag-row <?= $pag_row_class ?>">
             <?php if ($pag_key === 'pix'): ?>
-            <svg width="28" height="28" viewBox="0 0 512 512" fill="#1b5e20"><path d="M392.4 119.6c-17.5-17.5-45.9-17.5-63.4 0L256 192.6l-73-73c-17.5-17.5-45.9-17.5-63.4 0L55 184.2c-17.5 17.5-17.5 45.9 0 63.4l73 73-73 73c-17.5 17.5-17.5 45.9 0 63.4l64.6 64.6c17.5 17.5 45.9 17.5 63.4 0l73-73 73 73c17.5 17.5 45.9 17.5 63.4 0l64.6-64.6c17.5-17.5 17.5-45.9 0-63.4l-73-73 73-73c17.5-17.5 17.5-45.9 0-63.4z"/></svg>
-            <div>
-                <div class="pag-label">PIX</div>
-                <?php if ($emissor_cnpj): ?>
-                <div class="pix-key"><?= htmlspecialchars($emissor_cnpj) ?></div>
-                <div style="font-size:11px;color:#388e3c;margin-top:2px;">Chave PIX: CNPJ do estabelecimento</div>
-                <?php endif; ?>
-            </div>
+            <svg width="22" height="22" viewBox="0 0 512 512" fill="#1b5e20"><path d="M392.4 119.6c-17.5-17.5-45.9-17.5-63.4 0L256 192.6l-73-73c-17.5-17.5-45.9-17.5-63.4 0L55 184.2c-17.5 17.5-17.5 45.9 0 63.4l73 73-73 73c-17.5 17.5-17.5 45.9 0 63.4l64.6 64.6c17.5 17.5 45.9 17.5 63.4 0l73-73 73 73c17.5 17.5 45.9 17.5 63.4 0l64.6-64.6c17.5-17.5 17.5-45.9 0-63.4l-73-73 73-73c17.5-17.5 17.5-45.9 0-63.4z"/></svg>
+            <span class="pag-label">PIX</span>
+            <?php if ($emissor_cnpj): ?>
+            <span class="pag-sep">|</span>
+            <span class="pix-key"><?= htmlspecialchars($emissor_cnpj) ?></span>
+            <span class="pix-hint">(Chave PIX: CNPJ do estabelecimento)</span>
+            <?php endif; ?>
             <?php else: ?>
-            <div>
-                <div class="pag-label"><?= htmlspecialchars($pag_label) ?></div>
-            </div>
+            <span class="pag-label"><?= htmlspecialchars($pag_label) ?></span>
             <?php endif; ?>
         </div>
     </div>
@@ -294,24 +293,6 @@ header('Content-Type: text/html; charset=utf-8');
         </div>
     </div>
 
-    <!-- ── Entrega ── -->
-    <?php if ($pedido['entrega'] && $entrega_str): ?>
-    <div class="section">
-        <div class="section-title">🚚 Endereço de Entrega</div>
-        <div class="entrega-box">
-            <strong><?= htmlspecialchars($entrega_str) ?></strong>
-            <span style="margin-left:16px;color:#28a745;font-weight:700;">
-                Taxa: R$ <?= number_format($pedido['entrega_taxa'], 2, ',', '.') ?>
-            </span>
-        </div>
-        <!-- Aviso operacional fixo -->
-        <div class="aviso-box">
-            <strong>⚠️ Condições de Entrega</strong>
-            Não subimos escadas para entrega. O ponto deverá ser de 127 volts, tomada única, sem extensão ou adaptador.
-        </div>
-    </div>
-    <?php endif; ?>
-
     <!-- ── Itens do pedido ── -->
     <div class="section">
         <div class="section-title">📦 Itens do Pedido</div>
@@ -348,6 +329,23 @@ header('Content-Type: text/html; charset=utf-8');
         </table>
     </div>
 
+    <!-- ── Entrega (após itens) ── -->
+    <?php if ($pedido['entrega'] && $entrega_str): ?>
+    <div class="section" style="margin-top:16px;">
+        <div class="section-title">🚚 Endereço de Entrega</div>
+        <div class="entrega-box">
+            <strong><?= htmlspecialchars($entrega_str) ?></strong>
+            <span style="margin-left:16px;color:#28a745;font-weight:700;">
+                Taxa: R$ <?= number_format($pedido['entrega_taxa'], 2, ',', '.') ?>
+            </span>
+        </div>
+        <div class="aviso-box">
+            <strong>⚠️ Condições de Entrega</strong>
+            Não subimos escadas para entrega. O ponto deverá ser de 127 volts, tomada única, sem extensão ou adaptador.
+        </div>
+    </div>
+    <?php endif; ?>
+
     <!-- ── Totais ── -->
     <div class="totals-box">
         <div class="total-line">
@@ -367,8 +365,8 @@ header('Content-Type: text/html; charset=utf-8');
         </div>
         <?php endif; ?>
         <div class="total-final">
-            <span>TOTAL</span>
-            <span>R$ <?= number_format($pedido['total'], 2, ',', '.') ?></span>
+            <span><strong>TOTAL</strong></span>
+            <span><strong>R$ <?= number_format($pedido['total'], 2, ',', '.') ?></strong></span>
         </div>
     </div>
 

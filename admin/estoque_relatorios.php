@@ -70,40 +70,42 @@ require_once '../includes/header.php';
     <!-- Filtro de Estabelecimento (Admin Geral) + Seletor de Relatório -->
     <div class="card mb-3">
         <div class="card-body">
-            <form method="GET" class="row g-3 align-items-end">
+            <form method="GET" id="formFiltrosRelatorio">
                 <input type="hidden" name="tipo" value="<?= htmlspecialchars($tipo_relatorio) ?>">
-                <?php if (isAdminGeral()): ?>
-                <div class="col-md-4">
-                    <label class="form-label">Estabelecimento</label>
-                    <select name="estab" class="form-select" onchange="this.form.submit()">
-                        <option value="">Todos os estabelecimentos</option>
-                        <?php foreach ($estabelecimentos_lista as $e): ?>
-                        <option value="<?= $e['id'] ?>" <?= $filtro_estab_id == $e['id'] ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($e['name']) ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <?php endif; ?>
-                <div class="col-md-<?= isAdminGeral() ? '8' : '12' ?>">
-                    <label class="form-label">Tipo de Relatório</label>
-                    <div class="btn-group w-100" role="group">
-                        <a href="?tipo=movimentacoes<?= $filtro_estab_id ? '&estab='.$filtro_estab_id : '' ?>"
-                           class="btn btn-outline-primary <?= $tipo_relatorio == 'movimentacoes' ? 'active' : '' ?>">
-                            <i class="fas fa-exchange-alt"></i> Movimentações
-                        </a>
-                        <a href="?tipo=estoque_critico<?= $filtro_estab_id ? '&estab='.$filtro_estab_id : '' ?>"
-                           class="btn btn-outline-warning <?= $tipo_relatorio == 'estoque_critico' ? 'active' : '' ?>">
-                            <i class="fas fa-exclamation-triangle"></i> Estoque Crítico
-                        </a>
-                        <a href="?tipo=historico_precos<?= $filtro_estab_id ? '&estab='.$filtro_estab_id : '' ?>"
-                           class="btn btn-outline-info <?= $tipo_relatorio == 'historico_precos' ? 'active' : '' ?>">
-                            <i class="fas fa-chart-line"></i> Histórico de Preços
-                        </a>
-                        <a href="?tipo=giro_estoque<?= $filtro_estab_id ? '&estab='.$filtro_estab_id : '' ?>"
-                           class="btn btn-outline-success <?= $tipo_relatorio == 'giro_estoque' ? 'active' : '' ?>">
-                            <i class="fas fa-sync"></i> Giro de Estoque
-                        </a>
+                <div class="filter-grid">
+                    <?php if (isAdminGeral()): ?>
+                    <div class="filter-item">
+                        <label class="filter-label"><i class="fas fa-building"></i> Estabelecimento</label>
+                        <select name="estab" class="form-control" onchange="this.form.submit()">
+                            <option value="">Todos os estabelecimentos</option>
+                            <?php foreach ($estabelecimentos_lista as $e): ?>
+                            <option value="<?= $e['id'] ?>" <?= $filtro_estab_id == $e['id'] ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($e['name']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <?php endif; ?>
+                    <div class="filter-item" style="flex:3;min-width:300px;">
+                        <label class="filter-label">Tipo de Relatório</label>
+                        <div class="d-flex gap-2" style="flex-wrap:wrap;">
+                            <a href="?tipo=movimentacoes<?= $filtro_estab_id ? '&estab='.$filtro_estab_id : '' ?>"
+                               class="btn btn-sm btn-outline-primary <?= $tipo_relatorio == 'movimentacoes' ? 'active' : '' ?>">
+                                <i class="fas fa-exchange-alt"></i> Movimentações
+                            </a>
+                            <a href="?tipo=estoque_critico<?= $filtro_estab_id ? '&estab='.$filtro_estab_id : '' ?>"
+                               class="btn btn-sm btn-outline-warning <?= $tipo_relatorio == 'estoque_critico' ? 'active' : '' ?>">
+                                <i class="fas fa-exclamation-triangle"></i> Estoque Crítico
+                            </a>
+                            <a href="?tipo=historico_precos<?= $filtro_estab_id ? '&estab='.$filtro_estab_id : '' ?>"
+                               class="btn btn-sm btn-outline-info <?= $tipo_relatorio == 'historico_precos' ? 'active' : '' ?>">
+                                <i class="fas fa-chart-line"></i> Histórico de Preços
+                            </a>
+                            <a href="?tipo=giro_estoque<?= $filtro_estab_id ? '&estab='.$filtro_estab_id : '' ?>"
+                               class="btn btn-sm btn-outline-success <?= $tipo_relatorio == 'giro_estoque' ? 'active' : '' ?>">
+                                <i class="fas fa-sync"></i> Giro de Estoque
+                            </a>
+                        </div>
                     </div>
                 </div>
             </form>
@@ -165,28 +167,31 @@ require_once '../includes/header.php';
     <div class="card mb-3">
         <div class="card-header"><h3>Filtros</h3></div>
         <div class="card-body">
-            <form method="GET" class="row g-3 align-items-end">
+            <form method="GET" id="formFiltrosMov">
                 <input type="hidden" name="tipo" value="movimentacoes">
                 <?php if ($filtro_estab_id): ?><input type="hidden" name="estab" value="<?= $filtro_estab_id ?>"><?php endif; ?>
-                <div class="col-md-3">
-                    <label class="form-label">Data Início</label>
-                    <input type="date" name="data_inicio" class="form-control" value="<?= $_GET['data_inicio'] ?? '' ?>">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Data Fim</label>
-                    <input type="date" name="data_fim" class="form-control" value="<?= $_GET['data_fim'] ?? '' ?>">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Tipo</label>
-                    <select name="tipo_mov" class="form-select">
-                        <option value="">Todos</option>
-                        <option value="entrada" <?= ($_GET['tipo_mov'] ?? '') == 'entrada' ? 'selected' : '' ?>>Entrada</option>
-                        <option value="saida"   <?= ($_GET['tipo_mov'] ?? '') == 'saida'   ? 'selected' : '' ?>>Saída</option>
-                        <option value="ajuste"  <?= ($_GET['tipo_mov'] ?? '') == 'ajuste'  ? 'selected' : '' ?>>Ajuste</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <button type="submit" class="btn btn-primary w-100"><i class="fas fa-filter"></i> Filtrar</button>
+                <div class="filter-grid">
+                    <div class="filter-item">
+                        <label class="filter-label">Data Início</label>
+                        <input type="date" name="data_inicio" class="form-control" value="<?= $_GET['data_inicio'] ?? '' ?>">
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">Data Fim</label>
+                        <input type="date" name="data_fim" class="form-control" value="<?= $_GET['data_fim'] ?? '' ?>">
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">Tipo</label>
+                        <select name="tipo_mov" class="form-control">
+                            <option value="">Todos</option>
+                            <option value="entrada" <?= ($_GET['tipo_mov'] ?? '') == 'entrada' ? 'selected' : '' ?>>Entrada</option>
+                            <option value="saida"   <?= ($_GET['tipo_mov'] ?? '') == 'saida'   ? 'selected' : '' ?>>Saída</option>
+                            <option value="ajuste"  <?= ($_GET['tipo_mov'] ?? '') == 'ajuste'  ? 'selected' : '' ?>>Ajuste</option>
+                        </select>
+                    </div>
+                    <div class="filter-item filter-item-btn">
+                        <label class="filter-label">&nbsp;</label>
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filtrar</button>
+                    </div>
                 </div>
             </form>
         </div>

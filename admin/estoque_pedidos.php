@@ -224,33 +224,42 @@ require_once '../includes/header.php';
 
     <!-- Filtros -->
     <div class="card mb-3">
-        <div class="card-body py-3">
-            <form method="GET" class="row g-2 align-items-end">
-                <div class="col-md-3">
-                    <input type="text" name="busca" class="form-control form-control-sm"
-                           placeholder="Buscar por número, cliente, estabelecimento..."
-                           value="<?= htmlspecialchars($filtros['busca']) ?>">
-                </div>
-                <div class="col-md-2">
-                    <select name="status" class="form-select form-select-sm">
-                        <option value="">Todos os status</option>
-                        <option value="aguardando"  <?= $filtros['status'] === 'aguardando'  ? 'selected' : '' ?>>Aguardando</option>
-                        <option value="visualizado" <?= $filtros['status'] === 'visualizado' ? 'selected' : '' ?>>Visualizado</option>
-                        <option value="faturado"    <?= $filtros['status'] === 'faturado'    ? 'selected' : '' ?>>Faturado</option>
-                        <option value="cancelado"   <?= $filtros['status'] === 'cancelado'   ? 'selected' : '' ?>>Cancelado</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <input type="date" name="data_inicio" class="form-control form-control-sm" value="<?= htmlspecialchars($filtros['data_inicio']) ?>">
-                </div>
-                <div class="col-md-2">
-                    <input type="date" name="data_fim" class="form-control form-control-sm" value="<?= htmlspecialchars($filtros['data_fim']) ?>">
-                </div>
-                <div class="col-auto">
-                    <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-search"></i> Filtrar</button>
-                    <?php if (array_filter($filtros)): ?>
-                    <a href="estoque_pedidos.php" class="btn btn-secondary btn-sm"><i class="fas fa-times"></i></a>
-                    <?php endif; ?>
+        <div class="card-body">
+            <form method="GET" id="formFiltrosPedidos">
+                <div class="filter-grid">
+                    <div class="filter-item filter-item-wide">
+                        <label class="filter-label">Busca</label>
+                        <input type="text" name="busca" class="form-control"
+                               placeholder="Buscar por número, cliente, estabelecimento..."
+                               value="<?= htmlspecialchars($filtros['busca']) ?>">
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">Status</label>
+                        <select name="status" class="form-control">
+                            <option value="">Todos os status</option>
+                            <option value="aguardando"  <?= $filtros['status'] === 'aguardando'  ? 'selected' : '' ?>>Aguardando</option>
+                            <option value="visualizado" <?= $filtros['status'] === 'visualizado' ? 'selected' : '' ?>>Visualizado</option>
+                            <option value="faturado"    <?= $filtros['status'] === 'faturado'    ? 'selected' : '' ?>>Faturado</option>
+                            <option value="cancelado"   <?= $filtros['status'] === 'cancelado'   ? 'selected' : '' ?>>Cancelado</option>
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">Data Início</label>
+                        <input type="date" name="data_inicio" class="form-control" value="<?= htmlspecialchars($filtros['data_inicio']) ?>">
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">Data Fim</label>
+                        <input type="date" name="data_fim" class="form-control" value="<?= htmlspecialchars($filtros['data_fim']) ?>">
+                    </div>
+                    <div class="filter-item filter-item-btn">
+                        <label class="filter-label">&nbsp;</label>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Filtrar</button>
+                            <?php if (array_filter($filtros)): ?>
+                            <a href="estoque_pedidos.php" class="btn btn-outline-secondary" title="Limpar"><i class="fas fa-times"></i></a>
+                            <?php endif; ?>
+                        </div>
+                    </div>
                 </div>
             </form>
         </div>

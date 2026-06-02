@@ -832,54 +832,62 @@ require_once '../includes/header.php';
         </div>
 
         <!-- Filtros -->
-        <div class="card-body" style="border-bottom:1px solid var(--gray-300);padding-bottom:16px;">
-            <form method="GET" class="row g-2 align-items-end">
-                <div class="col-md-3">
-                    <input type="text" name="busca" class="form-control form-control-sm"
-                           placeholder="Buscar por PAT, descrição, série, NF..."
-                           value="<?= htmlspecialchars($filtros['busca']) ?>">
+        <div class="card-body" style="border-bottom:1px solid var(--gray-300);">
+            <form method="GET" id="formFiltrosInventario">
+                <div class="filter-grid">
+                    <div class="filter-item filter-item-wide">
+                        <label class="filter-label">Busca</label>
+                        <input type="text" name="busca" class="form-control"
+                               placeholder="Buscar por PAT, descrição, série, NF..."
+                               value="<?= htmlspecialchars($filtros['busca']) ?>">
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">Classificação</label>
+                        <select name="classificacao" class="form-control">
+                            <option value="">Todas</option>
+                            <option value="ativo"       <?= $filtros['classificacao'] === 'ativo'       ? 'selected' : '' ?>>Ativo</option>
+                            <option value="imobilizado" <?= $filtros['classificacao'] === 'imobilizado' ? 'selected' : '' ?>>Imobilizado</option>
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">Status</label>
+                        <select name="status" class="form-control">
+                            <option value="">Todos</option>
+                            <option value="ativo"         <?= $filtros['status'] === 'ativo'         ? 'selected' : '' ?>>Ativo</option>
+                            <option value="inativo"       <?= $filtros['status'] === 'inativo'       ? 'selected' : '' ?>>Inativo</option>
+                            <option value="em_manutencao" <?= $filtros['status'] === 'em_manutencao' ? 'selected' : '' ?>>Em Manutenção</option>
+                            <option value="baixado"       <?= $filtros['status'] === 'baixado'       ? 'selected' : '' ?>>Baixado</option>
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">Categoria</label>
+                        <select name="categoria" class="form-control">
+                            <option value="">Todas</option>
+                            <?php foreach ($categorias as $cat): ?>
+                            <option value="<?= htmlspecialchars($cat) ?>" <?= $filtros['categoria'] === $cat ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($cat) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">Preventiva</label>
+                        <select name="tem_preventiva" class="form-control">
+                            <option value="">Todas</option>
+                            <option value="1" <?= $filtros['tem_preventiva'] === '1' ? 'selected' : '' ?>>Com preventiva</option>
+                            <option value="0" <?= $filtros['tem_preventiva'] === '0' ? 'selected' : '' ?>>Sem preventiva</option>
+                        </select>
+                    </div>
+                    <div class="filter-item filter-item-btn">
+                        <label class="filter-label">&nbsp;</label>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary"><i class="fas fa-search"></i> Filtrar</button>
+                            <?php if (array_filter($filtros)): ?>
+                            <a href="estoque_inventario.php" class="btn btn-outline-secondary" title="Limpar"><i class="fas fa-times"></i></a>
+                            <?php endif; ?>
+                        </div>
+                    </div>
                 </div>
-                <div class="col-md-2">
-                    <select name="classificacao" class="form-select form-select-sm">
-                        <option value="">Classificação</option>
-                        <option value="ativo"       <?= $filtros['classificacao'] === 'ativo'       ? 'selected' : '' ?>>Ativo</option>
-                        <option value="imobilizado" <?= $filtros['classificacao'] === 'imobilizado' ? 'selected' : '' ?>>Imobilizado</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <select name="status" class="form-select form-select-sm">
-                        <option value="">Status</option>
-                        <option value="ativo"         <?= $filtros['status'] === 'ativo'         ? 'selected' : '' ?>>Ativo</option>
-                        <option value="inativo"       <?= $filtros['status'] === 'inativo'       ? 'selected' : '' ?>>Inativo</option>
-                        <option value="em_manutencao" <?= $filtros['status'] === 'em_manutencao' ? 'selected' : '' ?>>Em Manutenção</option>
-                        <option value="baixado"       <?= $filtros['status'] === 'baixado'       ? 'selected' : '' ?>>Baixado</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <select name="categoria" class="form-select form-select-sm">
-                        <option value="">Categoria</option>
-                        <?php foreach ($categorias as $cat): ?>
-                        <option value="<?= htmlspecialchars($cat) ?>" <?= $filtros['categoria'] === $cat ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($cat) ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <select name="tem_preventiva" class="form-select form-select-sm">
-                        <option value="">Preventiva</option>
-                        <option value="1" <?= $filtros['tem_preventiva'] === '1' ? 'selected' : '' ?>>Com preventiva</option>
-                        <option value="0" <?= $filtros['tem_preventiva'] === '0' ? 'selected' : '' ?>>Sem preventiva</option>
-                    </select>
-                </div>
-                <div class="col-md-1">
-                    <button type="submit" class="btn btn-primary btn-sm w-100"><i class="fas fa-search"></i></button>
-                </div>
-                <?php if (array_filter($filtros)): ?>
-                <div class="col-auto">
-                    <a href="estoque_inventario.php" class="btn btn-secondary btn-sm"><i class="fas fa-times"></i> Limpar</a>
-                </div>
-                <?php endif; ?>
             </form>
         </div>
 

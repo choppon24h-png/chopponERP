@@ -340,8 +340,15 @@ require_once '../includes/header.php';
 
     <!-- Cabeçalho da página -->
     <div class="page-header">
-        <h1><i class="fas fa-archive"></i> Inventário / Patrimônio</h1>
-        <p class="text-muted">Gestão de bens patrimoniais, imobilizados e ativos</p>
+        <div>
+            <h1><i class="fas fa-archive"></i> Inventário / Patrimônio</h1>
+            <p class="text-muted">Gestão de bens patrimoniais, imobilizados e ativos</p>
+        </div>
+        <?php if (!$pat_editar): ?>
+        <button type="button" class="btn btn-primary" id="btnNovoPatrimonio" onclick="abrirPainelCadastro()">
+            <i class="fas fa-plus-circle"></i> Novo Patrimônio
+        </button>
+        <?php endif; ?>
     </div>
 
     <!-- Abas de navegação do módulo Estoque -->
@@ -415,10 +422,9 @@ require_once '../includes/header.php';
             </div>
         </div>
     </div>
-
-    <!-- ── Painel de Cadastro / Edição Inline ──────────────────────────────── -->
-    <div class="edit-panel" id="painelCadastro">
-        <div class="edit-panel-header">
+    <!-- ── Painel de Cadastro / Edição Inline ────────────────────────────────────── -->
+    <div class="edit-panel" id="painelCadastro" <?php if (!$pat_editar): ?>style="display:none"<?php endif; ?>>
+    <div class="edit-panel-header">
             <h3>
                 <?php if ($pat_editar): ?>
                     <i class="fas fa-edit"></i> Editar Patrimônio — <?= htmlspecialchars($pat_editar['numero_pat']) ?>
@@ -433,7 +439,7 @@ require_once '../includes/header.php';
             <?php else: ?>
             <button type="button" onclick="togglePainel()" id="btnTogglePainel"
                     style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;">
-                <i class="fas fa-chevron-up" id="iconToggle"></i> Recolher
+                <i class="fas fa-times"></i> Fechar
             </button>
             <?php endif; ?>
         </div>
@@ -1071,15 +1077,26 @@ require_once '../includes/header.php';
 <!-- ── Scripts ────────────────────────────────────────────────────────────── -->
 <script>
 // ── Toggle painel de cadastro ─────────────────────────────────────────────
-var painelAberto = true;
+var painelAberto = false;
+
+// Abre o painel de cadastro (chamado pelo botão "+ Novo Patrimônio")
+function abrirPainelCadastro() {
+    var painel = document.getElementById('painelCadastro');
+    var btnNovo = document.getElementById('btnNovoPatrimonio');
+    painel.style.display = 'block';
+    painelAberto = true;
+    if (btnNovo) btnNovo.style.display = 'none';
+    painel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Fecha/recolhe o corpo do painel (botão "Recolher" dentro do header do painel)
 function togglePainel() {
-    var body = document.getElementById('painelBody');
-    var icon = document.getElementById('iconToggle');
-    var btn  = document.getElementById('btnTogglePainel');
-    painelAberto = !painelAberto;
-    body.style.display = painelAberto ? '' : 'none';
-    icon.className = painelAberto ? 'fas fa-chevron-up' : 'fas fa-chevron-down';
-    btn.innerHTML  = (painelAberto ? '<i class="fas fa-chevron-up"></i> Recolher' : '<i class="fas fa-chevron-down"></i> Expandir');
+    var painel = document.getElementById('painelCadastro');
+    var btnNovo = document.getElementById('btnNovoPatrimonio');
+    // Fecha o painel inteiro
+    painel.style.display = 'none';
+    painelAberto = false;
+    if (btnNovo) btnNovo.style.display = '';
 }
 
 // ── Tabs do formulário ────────────────────────────────────────────────────

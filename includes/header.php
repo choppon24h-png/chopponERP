@@ -137,6 +137,12 @@ $menu_structure = [
                 'url' => 'admin/financeiro_contas.php',
                 'page_key' => 'financeiro_contas'
             ],
+            'financeiro_contas_bancarias' => [
+                'title' => 'Contas Bancárias',
+                'icon' => 'fas fa-university',
+                'url' => 'admin/financeiro_contas_bancarias.php',
+                'page_key' => 'financeiro_contas_bancarias'
+            ],
             'financeiro_royalties' => [
                 'title' => 'Royalties',
                 'icon' => 'fas fa-crown',

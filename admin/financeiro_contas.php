@@ -25,6 +25,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $recorrencia        = isset($_POST['recorrencia']) ? intval($_POST['recorrencia']) : 1;
                 if ($recorrencia < 1)  $recorrencia = 1;
                 if ($recorrencia > 24) $recorrencia = 24;
+                $centro_custo           = !empty($_POST['centro_custo'])           ? sanitize($_POST['centro_custo'])           : null;
+                $classificacao_financeira = !empty($_POST['classificacao_financeira']) ? sanitize($_POST['classificacao_financeira']) : null;
+                $conta_bancaria_id      = !empty($_POST['conta_bancaria_id'])      ? intval($_POST['conta_bancaria_id'])        : null;
 
                 if ($action === 'edit') {
                     // ── Edição: atualiza apenas o registro individual ──────
@@ -40,11 +43,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $conn->prepare("
                         UPDATE contas_pagar
                         SET descricao = ?, tipo = ?, valor = ?, data_vencimento = ?,
-                            codigo_barras = ?, link_pagamento = ?, observacoes = ?
+                            codigo_barras = ?, link_pagamento = ?, observacoes = ?,
+                            centro_custo = ?, classificacao_financeira = ?, conta_bancaria_id = ?
                         WHERE id = ? AND estabelecimento_id = ?
                     ");
                     $stmt->execute([$descricao, $tipo, $valor, $data_vencimento,
                                     $codigo_barras, $link_pagamento, $observacoes,
+                                    $centro_custo, $classificacao_financeira, $conta_bancaria_id,
                                     $id, $estabelecimento_id]);
                     $_SESSION['success'] = 'Conta atualizada com sucesso!';
 
@@ -57,11 +62,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             (estabelecimento_id, descricao, tipo, valor, data_vencimento,
                              codigo_barras, link_pagamento, observacoes,
                              valor_protegido, origem,
-                             recorrencia_total, recorrencia_parcela, recorrencia_grupo)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, 'manual', 1, 1, NULL)
+                             recorrencia_total, recorrencia_parcela, recorrencia_grupo,
+                             centro_custo, classificacao_financeira, conta_bancaria_id)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, 'manual', 1, 1, NULL, ?, ?, ?)
                         ");
                         $stmt->execute([$estabelecimento_id, $descricao, $tipo, $valor,
-                                        $data_vencimento, $codigo_barras, $link_pagamento, $observacoes]);
+                                        $data_vencimento, $codigo_barras, $link_pagamento, $observacoes,
+                                        $centro_custo, $classificacao_financeira, $conta_bancaria_id]);
                         $_SESSION['success'] = 'Conta cadastrada com sucesso!';
                     } else {
                         // Recorrência: gera N parcelas mensais
@@ -88,8 +95,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 (estabelecimento_id, descricao, tipo, valor, data_vencimento,
                                  codigo_barras, link_pagamento, observacoes,
                                  valor_protegido, origem,
-                                 recorrencia_total, recorrencia_parcela, recorrencia_grupo)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, 'manual', ?, ?, ?)
+                                 recorrencia_total, recorrencia_parcela, recorrencia_grupo,
+                                 centro_custo, classificacao_financeira, conta_bancaria_id)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE, 'manual', ?, ?, ?, ?, ?, ?)
                             ");
                             $stmt->execute([
                                 $estabelecimento_id,
@@ -102,7 +110,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $observacoes,
                                 $recorrencia,
                                 $i,
-                                $grupo_uuid
+                                $grupo_uuid,
+                                $centro_custo,
+                                $classificacao_financeira,
+                                $conta_bancaria_id
                             ]);
                         }
                         $_SESSION['success'] = $recorrencia . ' parcelas criadas com sucesso!';
@@ -208,6 +219,18 @@ if (isAdminGeral()) {
 // ─── Tipos únicos para datalist ──────────────────────────────
 $stmt_tipos  = $conn->query("SELECT DISTINCT tipo FROM contas_pagar ORDER BY tipo");
 $tipos_conta = $stmt_tipos->fetchAll(PDO::FETCH_COLUMN);
+
+// ─── Contas bancárias para select ────────────────────────────
+$sql_cb = "SELECT id, nome, banco FROM contas_bancarias WHERE ativa = 1";
+$p_cb   = [];
+if (!isAdminGeral()) {
+    $sql_cb .= " AND estabelecimento_id = ?";
+    $p_cb[] = getEstabelecimentoId();
+}
+$sql_cb .= " ORDER BY nome";
+$stmt_cb = $conn->prepare($sql_cb);
+$stmt_cb->execute($p_cb);
+$contas_bancarias_sel = $stmt_cb->fetchAll();
 
 require_once '../includes/header.php';
 ?>
@@ -503,6 +526,50 @@ require_once '../includes/header.php';
                            placeholder="https://...">
                 </div>
 
+                <!-- ─── Campos de classificação financeira ─────── -->
+                <div style="display:flex; gap:12px;">
+                    <div class="form-group" style="flex:1;">
+                        <label>Centro de Custo</label>
+                        <input type="text" name="centro_custo" id="centro_custo" class="form-control"
+                               list="centroCustoListCP" placeholder="Ex: Operacional">
+                        <datalist id="centroCustoListCP">
+                            <option value="Operacional">
+                            <option value="Administrativo">
+                            <option value="Marketing">
+                            <option value="Comercial">
+                            <option value="Financeiro">
+                            <option value="RH">
+                            <option value="TI">
+                        </datalist>
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>Classificação Financeira</label>
+                        <select name="classificacao_financeira" id="classificacao_financeira" class="form-control">
+                            <option value="">Selecione...</option>
+                            <option value="Despesa Fixa">Despesa Fixa</option>
+                            <option value="Despesa Variável">Despesa Variável</option>
+                            <option value="Custo Operacional">Custo Operacional</option>
+                            <option value="Investimento">Investimento</option>
+                            <option value="Imposto">Imposto / Tributo</option>
+                            <option value="Retirada">Retirada de Sócio / Pro-labore</option>
+                            <option value="Outro">Outro</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Conta Bancária Vinculada</label>
+                    <select name="conta_bancaria_id" id="conta_bancaria_id" class="form-control">
+                        <option value="">Nenhuma (sem vínculo)</option>
+                        <?php foreach ($contas_bancarias_sel as $cb): ?>
+                            <option value="<?php echo $cb['id']; ?>">
+                                <?php echo htmlspecialchars($cb['nome']); ?>
+                                <?php if ($cb['banco']): ?>(<?php echo htmlspecialchars($cb['banco']); ?>)<?php endif; ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
                 <div class="form-group">
                     <label>Observações</label>
                     <textarea name="observacoes" id="observacoes" class="form-control" rows="2"
@@ -603,6 +670,9 @@ function editConta(conta) {
     document.getElementById('codigo_barras').value     = conta.codigo_barras || '';
     document.getElementById('link_pagamento').value    = conta.payment_link_url || conta.link_pagamento || '';
     document.getElementById('observacoes').value       = conta.observacoes || '';
+    document.getElementById('centro_custo').value      = conta.centro_custo || '';
+    document.getElementById('classificacao_financeira').value = conta.classificacao_financeira || '';
+    document.getElementById('conta_bancaria_id').value = conta.conta_bancaria_id || '';
 
     // Ocultar campo recorrência na edição
     document.getElementById('recorrenciaGroup').style.display = 'none';

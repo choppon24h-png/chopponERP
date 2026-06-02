@@ -1159,6 +1159,9 @@ input[type="file"] {
 .stat-icon.bg-orange    { background-color: #fd7e14; }
 .stat-info h3 { font-size: 26px; font-weight: 700; color: var(--gray-800); margin: 0 0 2px 0; line-height: 1.2; }
 .stat-info p  { font-size: 13px; color: var(--gray-600); margin: 0; }
+/* stat-number e stat-label: usados em módulos com 5+ cards */
+.stat-number { font-size: 22px; font-weight: 700; line-height: 1; color: var(--gray-800); margin: 0 0 2px 0; }
+.stat-label  { font-size: 12px; color: var(--gray-600); margin: 0; }
 
 .btn-outline-primary { background: transparent; border: 2px solid var(--primary-color); color: var(--primary-color); }
 .btn-outline-primary:hover { background: var(--primary-color); color: var(--white); }

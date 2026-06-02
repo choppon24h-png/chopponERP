@@ -134,14 +134,22 @@ require_once '../includes/header.php';
 }
 .tab-link:hover { color: #333; background-color: #f5f5f5; border-radius: 4px 4px 0 0; }
 .tab-link.active { color: #007bff; border-bottom-color: #007bff; font-weight: bold; }
-/* stat-cards/stat-card/stat-icon: definidos em assets/css/style.css */
+/* stat-cards/stat-card/stat-icon/stats-grid: definidos em assets/css/style.css */
 .stat-icon.yellow { background:#fff8e1; color:#f59e0b; }
 .stat-icon.blue   { background:#e3f0ff; color:#007bff; }
 .stat-icon.green  { background:#e6f9ee; color:#28a745; }
 .stat-icon.red    { background:#fdecea; color:#dc3545; }
 .stat-icon.teal   { background:#e0f7fa; color:#17a2b8; }
-.stat-value { font-size:20px; font-weight:700; line-height:1; }
-.stat-label { font-size:11px; color:var(--gray-600); margin-top:3px; }
+/* stat-number e stat-label — valores dentro de stat-card */
+.stat-number { font-size:20px; font-weight:700; line-height:1; color:var(--gray-800); }
+.stat-label  { font-size:11px; color:var(--gray-600); margin-top:3px; }
+/* Responsivo: 3 colunas em telas médias, 2 em mobile */
+@media (max-width: 992px) {
+    .stats-grid[style*="repeat(5"] { grid-template-columns: repeat(3,1fr) !important; }
+}
+@media (max-width: 576px) {
+    .stats-grid[style*="repeat(5"] { grid-template-columns: repeat(2,1fr) !important; }
+}
 /* ── Status badges ─────────────────────────────────────────────────────────────────── */
 .badge-aguardando  { background:#fff8e1; color:#f59e0b; }
 .badge-visualizado { background:#e3f0ff; color:#007bff; }
@@ -212,26 +220,26 @@ require_once '../includes/header.php';
     <?php endif; ?>
 
     <!-- Cards de estatísticas -->
-    <div class="stat-cards">
+    <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);">
         <div class="stat-card">
             <div class="stat-icon yellow"><i class="fas fa-clock"></i></div>
-            <div class="stat-info"><div class="stat-value"><?= $stats['aguardando'] ?? 0 ?></div><div class="stat-label">Aguardando</div></div>
+            <div class="stat-info"><div class="stat-number"><?= $stats['aguardando'] ?? 0 ?></div><div class="stat-label">Aguardando</div></div>
         </div>
         <div class="stat-card">
             <div class="stat-icon blue"><i class="fas fa-eye"></i></div>
-            <div class="stat-info"><div class="stat-value"><?= $stats['visualizado'] ?? 0 ?></div><div class="stat-label">Visualizados</div></div>
+            <div class="stat-info"><div class="stat-number"><?= $stats['visualizado'] ?? 0 ?></div><div class="stat-label">Visualizados</div></div>
         </div>
         <div class="stat-card">
             <div class="stat-icon green"><i class="fas fa-check-circle"></i></div>
-            <div class="stat-info"><div class="stat-value"><?= $stats['faturado'] ?? 0 ?></div><div class="stat-label">Faturados</div></div>
+            <div class="stat-info"><div class="stat-number"><?= $stats['faturado'] ?? 0 ?></div><div class="stat-label">Faturados</div></div>
         </div>
         <div class="stat-card">
             <div class="stat-icon red"><i class="fas fa-times-circle"></i></div>
-            <div class="stat-info"><div class="stat-value"><?= $stats['cancelado'] ?? 0 ?></div><div class="stat-label">Cancelados</div></div>
+            <div class="stat-info"><div class="stat-number"><?= $stats['cancelado'] ?? 0 ?></div><div class="stat-label">Cancelados</div></div>
         </div>
         <div class="stat-card">
             <div class="stat-icon teal"><i class="fas fa-dollar-sign"></i></div>
-            <div class="stat-info"><div class="stat-value">R$ <?= number_format($stats['valor_faturado'] ?? 0, 0, ',', '.') ?></div><div class="stat-label">Total Faturado</div></div>
+            <div class="stat-info"><div class="stat-number">R$ <?= number_format($stats['valor_faturado'] ?? 0, 0, ',', '.') ?></div><div class="stat-label">Total Faturado</div></div>
         </div>
     </div>
 

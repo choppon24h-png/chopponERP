@@ -25,12 +25,11 @@ if (isAdminGeral() && !empty($_GET['estab'])) {
     $filtro_estab_id = (int)$_GET['estab'];
 }
 
-// Buscar lista de estabelecimentos para o filtro (apenas admin)
+// Buscar lista de estabelecimentos para o filtro e modal
+// CORRIGIDO: status é TINYINT(1), não string 'ativo'
 $estabelecimentos_lista = [];
-if (isAdminGeral()) {
-    $stmt_estabs = $conn->query("SELECT id, name FROM estabelecimentos WHERE status = 'ativo' ORDER BY name");
-    $estabelecimentos_lista = $stmt_estabs->fetchAll();
-}
+$stmt_estabs = $conn->query("SELECT id, name FROM estabelecimentos WHERE status = 1 ORDER BY name");
+$estabelecimentos_lista = $stmt_estabs->fetchAll();
 
 $success = '';
 $error = '';
@@ -53,6 +52,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'atualizar') {
+        // Para franqueado, garante que não altere o estabelecimento_id
+        if (!isAdminGeral()) {
+            $_POST['estabelecimento_id'] = $user_estab_id;
+        }
         $resultado = $estoqueManager->atualizarProduto($_POST['id'], $_POST);
         if ($resultado['success']) {
             $success = $resultado['message'];
@@ -72,6 +75,14 @@ $produtos = $estoqueManager->listarProdutos($filtros_get);
 // Buscar fornecedores
 $stmt = $conn->query("SELECT id, nome FROM fornecedores WHERE ativo = 1 ORDER BY nome");
 $fornecedores = $stmt->fetchAll();
+
+// Nome do estabelecimento do usuário logado (para franqueados)
+$nome_estab_usuario = '';
+if (!isAdminGeral() && $user_estab_id) {
+    $stmt_nome = $conn->prepare("SELECT name FROM estabelecimentos WHERE id = ?");
+    $stmt_nome->execute([$user_estab_id]);
+    $nome_estab_usuario = $stmt_nome->fetchColumn() ?: 'Meu Estabelecimento';
+}
 
 require_once '../includes/header.php';
 ?>
@@ -99,8 +110,8 @@ require_once '../includes/header.php';
     <div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($error) ?></div>
     <?php endif; ?>
 
-    <!-- Botão Novo Produto -->
-    <div class="mb-3 d-flex gap-2 align-items-center">
+    <!-- Botões de ação -->
+    <div class="mb-3 d-flex gap-2 align-items-center flex-wrap">
         <button class="btn btn-primary" onclick="abrirModalProduto()">
             <i class="fas fa-plus"></i> Novo Produto
         </button>
@@ -109,13 +120,7 @@ require_once '../includes/header.php';
         </a>
         <?php if (!isAdminGeral()): ?>
         <span class="badge badge-info" style="font-size:0.85rem; padding:6px 12px;">
-            <i class="fas fa-building"></i>
-            <?php
-            $stmt_nome = $conn->prepare("SELECT name FROM estabelecimentos WHERE id = ?");
-            $stmt_nome->execute([$user_estab_id]);
-            $nome_estab = $stmt_nome->fetchColumn();
-            echo htmlspecialchars($nome_estab ?: 'Meu Estabelecimento');
-            ?>
+            <i class="fas fa-building"></i> <?= htmlspecialchars($nome_estab_usuario) ?>
         </span>
         <?php endif; ?>
     </div>
@@ -123,61 +128,68 @@ require_once '../includes/header.php';
     <!-- Filtros -->
     <div class="card mb-3">
         <div class="card-body">
-            <form method="GET" class="row g-3 align-items-end">
-                <?php if (isAdminGeral()): ?>
-                <div class="col-md-3">
-                    <label class="form-label"><i class="fas fa-building"></i> Estabelecimento</label>
-                    <select name="estab" class="form-select" onchange="this.form.submit()">
-                        <option value="">Todos os estabelecimentos</option>
-                        <?php foreach ($estabelecimentos_lista as $e): ?>
-                        <option value="<?= $e['id'] ?>" <?= $filtro_estab_id == $e['id'] ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($e['name']) ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
+            <form method="GET" id="formFiltros">
+                <div class="filter-grid">
+                    <?php if (isAdminGeral()): ?>
+                    <div class="filter-item">
+                        <label class="filter-label"><i class="fas fa-building"></i> Estabelecimento</label>
+                        <select name="estab" class="form-control" onchange="this.form.submit()">
+                            <option value="">Todos os estabelecimentos</option>
+                            <?php foreach ($estabelecimentos_lista as $e): ?>
+                            <option value="<?= $e['id'] ?>" <?= $filtro_estab_id == $e['id'] ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($e['name']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <?php endif; ?>
+
+                    <div class="filter-item filter-item-wide">
+                        <label class="filter-label">Busca</label>
+                        <input type="text" name="busca" class="form-control"
+                               placeholder="Nome, código ou código de barras"
+                               value="<?= htmlspecialchars($_GET['busca'] ?? '') ?>">
+                    </div>
+
+                    <div class="filter-item">
+                        <label class="filter-label">Fornecedor</label>
+                        <select name="fornecedor_id" class="form-control">
+                            <option value="">Todos</option>
+                            <?php foreach ($fornecedores as $f): ?>
+                            <option value="<?= $f['id'] ?>" <?= ($_GET['fornecedor_id'] ?? '') == $f['id'] ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($f['nome']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="filter-item">
+                        <label class="filter-label">Categoria</label>
+                        <select name="categoria" class="form-control">
+                            <option value="">Todas</option>
+                            <option value="Pilsen"    <?= ($_GET['categoria'] ?? '') == 'Pilsen'    ? 'selected' : '' ?>>Pilsen</option>
+                            <option value="IPA"       <?= ($_GET['categoria'] ?? '') == 'IPA'       ? 'selected' : '' ?>>IPA</option>
+                            <option value="Lager"     <?= ($_GET['categoria'] ?? '') == 'Lager'     ? 'selected' : '' ?>>Lager</option>
+                            <option value="Stout"     <?= ($_GET['categoria'] ?? '') == 'Stout'     ? 'selected' : '' ?>>Stout</option>
+                            <option value="Weiss"     <?= ($_GET['categoria'] ?? '') == 'Weiss'     ? 'selected' : '' ?>>Weiss</option>
+                            <option value="Artesanal" <?= ($_GET['categoria'] ?? '') == 'Artesanal' ? 'selected' : '' ?>>Artesanal</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-item filter-item-btn">
+                        <label class="filter-label">&nbsp;</label>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-search"></i> Filtrar
+                            </button>
+                            <?php if (!empty($_GET['busca']) || !empty($_GET['fornecedor_id']) || !empty($_GET['categoria']) || !empty($_GET['estab'])): ?>
+                            <a href="estoque_produtos.php" class="btn btn-outline-secondary" title="Limpar filtros">
+                                <i class="fas fa-times"></i>
+                            </a>
+                            <?php endif; ?>
+                        </div>
+                    </div>
                 </div>
-                <?php endif; ?>
-                <div class="col-md-<?= isAdminGeral() ? '3' : '4' ?>">
-                    <label class="form-label">Busca</label>
-                    <input type="text" name="busca" class="form-control"
-                           placeholder="Nome, código ou código de barras"
-                           value="<?= htmlspecialchars($_GET['busca'] ?? '') ?>">
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Fornecedor</label>
-                    <select name="fornecedor_id" class="form-select">
-                        <option value="">Todos</option>
-                        <?php foreach ($fornecedores as $f): ?>
-                        <option value="<?= $f['id'] ?>" <?= ($_GET['fornecedor_id'] ?? '') == $f['id'] ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($f['nome']) ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Categoria</label>
-                    <select name="categoria" class="form-select">
-                        <option value="">Todas</option>
-                        <option value="Pilsen" <?= ($_GET['categoria'] ?? '') == 'Pilsen' ? 'selected' : '' ?>>Pilsen</option>
-                        <option value="IPA" <?= ($_GET['categoria'] ?? '') == 'IPA' ? 'selected' : '' ?>>IPA</option>
-                        <option value="Lager" <?= ($_GET['categoria'] ?? '') == 'Lager' ? 'selected' : '' ?>>Lager</option>
-                        <option value="Stout" <?= ($_GET['categoria'] ?? '') == 'Stout' ? 'selected' : '' ?>>Stout</option>
-                        <option value="Weiss" <?= ($_GET['categoria'] ?? '') == 'Weiss' ? 'selected' : '' ?>>Weiss</option>
-                        <option value="Artesanal" <?= ($_GET['categoria'] ?? '') == 'Artesanal' ? 'selected' : '' ?>>Artesanal</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="fas fa-search"></i> Filtrar
-                    </button>
-                </div>
-                <?php if (!empty($_GET['busca']) || !empty($_GET['fornecedor_id']) || !empty($_GET['categoria']) || !empty($_GET['estab'])): ?>
-                <div class="col-md-1">
-                    <a href="estoque_produtos.php" class="btn btn-outline-secondary w-100" title="Limpar filtros">
-                        <i class="fas fa-times"></i>
-                    </a>
-                </div>
-                <?php endif; ?>
             </form>
         </div>
     </div>
@@ -276,7 +288,7 @@ require_once '../includes/header.php';
     </div>
 </div>
 
-<!-- Modal: Produto -->
+<!-- Modal: Produto (Novo / Editar) -->
 <div id="modalProduto" class="modal-overlay" style="display:none;">
     <div class="modal-box" style="max-width:900px;">
         <div class="modal-box-header">
@@ -286,27 +298,31 @@ require_once '../includes/header.php';
         <form method="POST" id="formProduto">
             <input type="hidden" name="action" id="produto_action" value="criar">
             <input type="hidden" name="id" id="produto_id">
-            <?php if (!isAdminGeral()): ?>
-            <input type="hidden" name="estabelecimento_id" value="<?= $user_estab_id ?>">
-            <?php endif; ?>
 
             <div class="modal-box-body">
-                <?php if (isAdminGeral()): ?>
+                <!-- Seção Estabelecimento -->
                 <div class="form-section">
                     <div class="form-section-title">Estabelecimento</div>
                     <div class="form-row">
                         <div class="form-group" style="flex:1;">
                             <label class="form-label required">Estabelecimento *</label>
+                            <?php if (isAdminGeral()): ?>
+                            <!-- Admin Geral: pode selecionar qualquer estabelecimento -->
                             <select name="estabelecimento_id" id="produto_estab" class="form-control" required>
                                 <option value="">Selecione o estabelecimento</option>
                                 <?php foreach ($estabelecimentos_lista as $e): ?>
                                 <option value="<?= $e['id'] ?>"><?= htmlspecialchars($e['name']) ?></option>
                                 <?php endforeach; ?>
                             </select>
+                            <?php else: ?>
+                            <!-- Franqueado: vê apenas seu estabelecimento (somente leitura) -->
+                            <input type="hidden" name="estabelecimento_id" id="produto_estab" value="<?= $user_estab_id ?>">
+                            <input type="text" class="form-control" value="<?= htmlspecialchars($nome_estab_usuario) ?>" readonly
+                                   style="background:#f8f9fa; cursor:not-allowed;" title="Você só pode cadastrar produtos para seu estabelecimento">
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
-                <?php endif; ?>
 
                 <div class="form-section">
                     <div class="form-section-title">Informações Básicas</div>
@@ -432,6 +448,43 @@ require_once '../includes/header.php';
     </div>
 </div>
 
+<style>
+/* ── Grid de filtros alinhado ───────────────────────────────────────────── */
+.filter-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+}
+.filter-item {
+    display: flex;
+    flex-direction: column;
+    min-width: 160px;
+    flex: 1;
+}
+.filter-item-wide {
+    flex: 2;
+    min-width: 220px;
+}
+.filter-item-btn {
+    flex: 0 0 auto;
+    min-width: auto;
+}
+.filter-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--gray-600, #6b7280);
+    margin-bottom: 6px;
+    white-space: nowrap;
+}
+@media (max-width: 768px) {
+    .filter-grid { flex-direction: column; }
+    .filter-item, .filter-item-wide { min-width: 100%; flex: unset; }
+}
+</style>
+
 <script>
 function abrirModalProduto() {
     document.getElementById('modalProduto').style.display = 'flex';
@@ -440,6 +493,9 @@ function abrirModalProduto() {
     document.getElementById('produto_action').value = 'criar';
     document.getElementById('produto_id').value = '';
     document.getElementById('produto_markup').readOnly = true;
+    // Para admin: limpa o select de estabelecimento
+    const estabSelect = document.getElementById('produto_estab');
+    if (estabSelect && estabSelect.tagName === 'SELECT') estabSelect.value = '';
 }
 
 function fecharModalProduto() {
@@ -468,9 +524,17 @@ function editarProduto(produto) {
     document.getElementById('produto_markup_livre').checked = produto.markup_livre == 1;
     document.getElementById('produto_preco_100ml').value = 'R$ ' + parseFloat(produto.preco_100ml || 0).toFixed(2);
 
-    // Setar estabelecimento no select (admin)
-    const estabSelect = document.getElementById('produto_estab');
-    if (estabSelect) estabSelect.value = produto.estabelecimento_id || '';
+    // Setar estabelecimento no select (somente para admin — select existe no DOM)
+    const estabEl = document.getElementById('produto_estab');
+    if (estabEl) {
+        if (estabEl.tagName === 'SELECT') {
+            // Admin Geral: seleciona a opção correta
+            estabEl.value = produto.estabelecimento_id || '';
+        } else {
+            // Hidden input para franqueado: já tem o valor fixo da sessão
+            // (não precisa alterar)
+        }
+    }
 
     toggleMarkupLivre();
 }
@@ -516,7 +580,6 @@ function calcularPreco100ml() {
 }
 
 function verDetalhes(id) {
-    // Redireciona para a página de detalhes do produto
     window.location.href = 'estoque_visao.php?produto_id=' + id;
 }
 

@@ -181,6 +181,64 @@ class StripeAPI
         return $json;
     }
 
+    /* ===================== CHECKOUT SESSION ===================== */
+
+    /**
+     * Criar Checkout Session (Stripe Hosted Payment Page)
+     * Usado para royalties — redireciona o estabelecimento para pagar.
+     *
+     * @param array $params {
+     *   amount       int    valor em centavos
+     *   currency     string 'brl'
+     *   description  string descrição
+     *   success_url  string URL de retorno em caso de sucesso
+     *   cancel_url   string URL de retorno em caso de cancelamento
+     *   metadata     array  metadados (royalty_id, etc.)
+     * }
+     * @return array { id, url }
+     */
+    public function createCheckoutSession(array $params): array
+    {
+        $amount      = (int)($params['amount'] ?? 0);
+        $currency    = $params['currency'] ?? 'brl';
+        $description = $params['description'] ?? 'Royalty';
+        $success_url = $params['success_url'] ?? SITE_URL . '/admin/royalty_pagamento_sucesso.php';
+        $cancel_url  = $params['cancel_url']  ?? SITE_URL . '/admin/financeiro_royalties.php';
+        $metadata    = $params['metadata']    ?? [];
+
+        $data = [
+            'payment_method_types[0]'          => 'card',
+            'line_items[0][price_data][currency]'                      => $currency,
+            'line_items[0][price_data][unit_amount]'                   => $amount,
+            'line_items[0][price_data][product_data][name]'            => $description,
+            'line_items[0][quantity]'                                  => 1,
+            'mode'                             => 'payment',
+            'success_url'                      => $success_url,
+            'cancel_url'                       => $cancel_url,
+        ];
+
+        // Adicionar metadados
+        foreach ($metadata as $k => $v) {
+            $data["metadata[{$k}]"] = $v;
+        }
+
+        $session = $this->requestStripe('POST', '/v1/checkout/sessions', $data);
+
+        if (empty($session['id']) || empty($session['url'])) {
+            throw new Exception('Stripe não retornou session válida: ' . json_encode($session));
+        }
+
+        $this->log('INFO', 'Checkout Session criada', [
+            'session_id' => $session['id'],
+            'url'        => $session['url'],
+        ]);
+
+        return [
+            'id'  => $session['id'],
+            'url' => $session['url'],
+        ];
+    }
+
     /* ===================== WEBHOOK ===================== */
 
     /**

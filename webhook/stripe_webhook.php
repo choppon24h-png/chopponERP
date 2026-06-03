@@ -67,15 +67,25 @@ try {
         case 'invoice.paid':
             processInvoicePaid($event, $conn);
             break;
-            
+
         case 'invoice.payment_failed':
             processInvoicePaymentFailed($event, $conn);
             break;
-            
+
         case 'invoice.finalized':
             processInvoiceFinalized($event, $conn);
             break;
-            
+
+        // Evento gerado pelo Stripe Checkout Session (usado para royalties)
+        case 'checkout.session.completed':
+            processCheckoutSessionCompleted($event, $conn);
+            break;
+
+        // Evento de payment_intent bem-sucedido (fallback)
+        case 'payment_intent.succeeded':
+            processPaymentIntentSucceeded($event, $conn);
+            break;
+
         default:
             error_log('[' . date('Y-m-d H:i:s') . '] Evento não processado: ' . $event_type);
     }
@@ -221,10 +231,142 @@ function processInvoicePaymentFailed($event, $conn) {
 function processInvoiceFinalized($event, $conn) {
     $invoice = $event['data']['object'];
     $invoice_id = $invoice['id'];
-    
     error_log('[' . date('Y-m-d H:i:s') . '] Processando invoice.finalized: ' . $invoice_id);
-    
-    // Apenas registrar no log - não precisa atualizar nada
     error_log('[' . date('Y-m-d H:i:s') . '] Fatura finalizada: ' . $invoice_id);
+}
+
+/**
+ * Processar checkout.session.completed
+ * Disparado quando o estabelecimento conclui o pagamento via Stripe Checkout.
+ */
+function processCheckoutSessionCompleted($event, $conn) {
+    $session    = $event['data']['object'];
+    $session_id = $session['id'];
+    $amount_paid = isset($session['amount_total']) ? $session['amount_total'] / 100 : null;
+    $paid_at    = $session['created'] ?? time();
+
+    error_log('[' . date('Y-m-d H:i:s') . '] Processando checkout.session.completed: ' . $session_id);
+
+    // Buscar royalty pelo session_id gravado em payment_id
+    $royalty = null;
+    $stmt = $conn->prepare("SELECT * FROM royalties WHERE payment_id = ? LIMIT 1");
+    $stmt->execute([$session_id]);
+    $royalty = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    // Fallback: buscar pelo metadata.royalty_id
+    if (!$royalty) {
+        $royalty_id_meta = $session['metadata']['royalty_id'] ?? null;
+        if ($royalty_id_meta) {
+            $stmt = $conn->prepare("SELECT * FROM royalties WHERE id = ? LIMIT 1");
+            $stmt->execute([(int)$royalty_id_meta]);
+            $royalty = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+    }
+
+    if (!$royalty) {
+        error_log('[' . date('Y-m-d H:i:s') . '] checkout.session.completed: royalty não encontrado para session ' . $session_id);
+        return;
+    }
+
+    // Atualizar status do royalty para pago
+    $conn->prepare("
+        UPDATE royalties
+        SET status         = 'pago',
+            payment_status = 'paid',
+            data_pagamento = FROM_UNIXTIME(?),
+            paid_at        = FROM_UNIXTIME(?),
+            payment_data   = ?,
+            updated_at     = NOW()
+        WHERE id = ?
+    ")->execute([
+        $paid_at,
+        $paid_at,
+        json_encode($session),
+        $royalty['id'],
+    ]);
+
+    // Atualizar conta a pagar vinculada (se existir)
+    if (!empty($royalty['conta_pagar_id'])) {
+        $conn->prepare("
+            UPDATE contas_pagar
+            SET status         = 'pago',
+                data_pagamento = FROM_UNIXTIME(?),
+                valor_pago     = ?
+            WHERE id = ?
+        ")->execute([$paid_at, $amount_paid, $royalty['conta_pagar_id']]);
+    }
+
+    // Registrar no histórico
+    try {
+        $conn->prepare("
+            INSERT INTO royalties_historico (royalty_id, acao, descricao, dados_json, user_id)
+            VALUES (?, 'pagamento_confirmado', 'Pagamento confirmado via Stripe Checkout (checkout.session.completed)', ?, NULL)
+        ")->execute([$royalty['id'], json_encode($session)]);
+    } catch (Exception $e) { /* tabela pode não existir */ }
+
+    error_log('[' . date('Y-m-d H:i:s') . '] Royalty ' . $royalty['id'] . ' marcado como PAGO via Stripe Checkout.');
+}
+
+/**
+ * Processar payment_intent.succeeded
+ * Fallback para quando o pagamento é confirmado via PaymentIntent diretamente.
+ */
+function processPaymentIntentSucceeded($event, $conn) {
+    $intent     = $event['data']['object'];
+    $intent_id  = $intent['id'];
+    $amount_paid = isset($intent['amount_received']) ? $intent['amount_received'] / 100 : null;
+    $paid_at    = $intent['created'] ?? time();
+
+    error_log('[' . date('Y-m-d H:i:s') . '] Processando payment_intent.succeeded: ' . $intent_id);
+
+    // Buscar royalty pelo payment_id
+    $stmt = $conn->prepare("SELECT * FROM royalties WHERE payment_id = ? LIMIT 1");
+    $stmt->execute([$intent_id]);
+    $royalty = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    // Fallback: metadata
+    if (!$royalty) {
+        $royalty_id_meta = $intent['metadata']['royalty_id'] ?? null;
+        if ($royalty_id_meta) {
+            $stmt = $conn->prepare("SELECT * FROM royalties WHERE id = ? LIMIT 1");
+            $stmt->execute([(int)$royalty_id_meta]);
+            $royalty = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+    }
+
+    if (!$royalty) {
+        error_log('[' . date('Y-m-d H:i:s') . '] payment_intent.succeeded: royalty não encontrado para intent ' . $intent_id);
+        return;
+    }
+
+    $conn->prepare("
+        UPDATE royalties
+        SET status         = 'pago',
+            payment_status = 'paid',
+            data_pagamento = FROM_UNIXTIME(?),
+            paid_at        = FROM_UNIXTIME(?),
+            payment_data   = ?,
+            updated_at     = NOW()
+        WHERE id = ?
+    ")->execute([$paid_at, $paid_at, json_encode($intent), $royalty['id']]);
+
+    if (!empty($royalty['conta_pagar_id'])) {
+        $conn->prepare("
+            UPDATE contas_pagar
+            SET status         = 'pago',
+                data_pagamento = FROM_UNIXTIME(?),
+                valor_pago     = ?
+            WHERE id = ?
+        ")->execute([$paid_at, $amount_paid, $royalty['conta_pagar_id']]);
+    }
+
+    try {
+        $conn->prepare("
+            INSERT INTO royalties_historico (royalty_id, acao, descricao, dados_json, user_id)
+            VALUES (?, 'pagamento_confirmado', 'Pagamento confirmado via Stripe PaymentIntent (payment_intent.succeeded)', ?, NULL)
+        ")->execute([$royalty['id'], json_encode($intent)]);
+    } catch (Exception $e) { /* tabela pode não existir */ }
+
+    error_log('[' . date('Y-m-d H:i:s') . '] Royalty ' . $royalty['id'] . ' marcado como PAGO via PaymentIntent.');
 }
 ?>

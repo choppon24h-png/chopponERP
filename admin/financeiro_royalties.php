@@ -440,29 +440,55 @@ require_once '../includes/header.php';
                                         <i class="fas fa-edit"></i>
                                     </button>
                                     <?php endif; ?>
-                                    <!-- Pagar (gerar link) — SOMENTE ADMIN GERAL -->
+                                    <!-- ══ ADMIN GERAL: Gerar Link de Pagamento (status pendente) ══ -->
                                     <?php if (isAdminGeral() && $r['status'] === 'pendente'): ?>
-                                    <button class="btn btn-success" onclick="pagarRoyalty(<?= $r['id'] ?>)" title="Gerar Link de Pagamento">
-                                        <i class="fas fa-credit-card"></i> Pagar
+                                    <button class="btn btn-success" onclick="pagarRoyalty(<?= $r['id'] ?>)" title="Gerar Link de Pagamento para o estabelecimento">
+                                        <i class="fas fa-link"></i> Gerar Link
                                     </button>
-                                    <?php elseif (!isAdminGeral() && $r['status'] === 'pendente'): ?>
-                                    <span class="badge bg-warning text-dark" title="Somente o administrador pode iniciar o pagamento">
-                                        <i class="fas fa-lock"></i> Aguardando Admin
+                                    <?php endif; ?>
+
+                                    <!-- ══ ESTABELECIMENTO: status pendente — aguardando admin gerar link ══ -->
+                                    <?php if (!isAdminGeral() && $r['status'] === 'pendente'): ?>
+                                    <span class="badge bg-warning text-dark" title="Aguardando o administrador gerar o link de pagamento">
+                                        <i class="fas fa-hourglass-half"></i> Aguardando Link
                                     </span>
                                     <?php endif; ?>
-                                    <!-- Boleto/Reenvio -->
-                                    <?php if (in_array($r['status'], ['link_gerado','enviado'])): ?>
+
+                                    <!-- ══ ESTABELECIMENTO: botão PAGAR quando link já foi gerado ══ -->
+                                    <?php
+                                    $payment_link_estab = $r['payment_url'] ?? $r['mp_link_pagamento'] ?? $r['boleto_url'] ?? null;
+                                    ?>
+                                    <?php if (!isAdminGeral() && in_array($r['status'], ['link_gerado','enviado']) && !empty($payment_link_estab)): ?>
+                                    <a href="<?= htmlspecialchars($payment_link_estab) ?>" target="_blank"
+                                       class="btn btn-success btn-sm"
+                                       title="Clique para pagar este royalty"
+                                       style="font-weight:700; padding:6px 16px;">
+                                        <i class="fas fa-credit-card"></i> Pagar
+                                    </a>
+                                    <?php elseif (!isAdminGeral() && in_array($r['status'], ['link_gerado','enviado']) && empty($payment_link_estab)): ?>
+                                    <span class="badge bg-info text-dark" title="Link de pagamento sendo processado">
+                                        <i class="fas fa-spinner fa-spin"></i> Processando
+                                    </span>
+                                    <?php endif; ?>
+
+                                    <!-- ══ ADMIN: ações sobre link gerado (reenviar e-mail, ver boleto/link) ══ -->
+                                    <?php if (isAdminGeral() && in_array($r['status'], ['link_gerado','enviado'])): ?>
                                     <?php if (!empty($r['boleto_url'])): ?>
                                     <button class="btn btn-warning" onclick="window.open('<?= htmlspecialchars($r['boleto_url']) ?>', '_blank')" title="Ver Boleto">
                                         <i class="fas fa-barcode"></i>
                                     </button>
                                     <?php endif; ?>
                                     <?php if (!empty($r['mp_link_pagamento'])): ?>
-                                    <button class="btn btn-outline-info" onclick="window.open('<?= htmlspecialchars($r['mp_link_pagamento']) ?>', '_blank')" title="Link MP">
+                                    <button class="btn btn-outline-info" onclick="window.open('<?= htmlspecialchars($r['mp_link_pagamento']) ?>', '_blank')" title="Link MercadoPago">
                                         <i class="fab fa-cc-mastercard"></i>
                                     </button>
                                     <?php endif; ?>
-                                    <button class="btn btn-primary" onclick="reenviarEmail(<?= $r['id'] ?>)" title="Reenviar E-mail">
+                                    <?php if (!empty($r['payment_url']) && empty($r['boleto_url']) && empty($r['mp_link_pagamento'])): ?>
+                                    <button class="btn btn-outline-success" onclick="window.open('<?= htmlspecialchars($r['payment_url']) ?>', '_blank')" title="Ver Link de Pagamento">
+                                        <i class="fas fa-external-link-alt"></i>
+                                    </button>
+                                    <?php endif; ?>
+                                    <button class="btn btn-primary" onclick="reenviarEmail(<?= $r['id'] ?>)" title="Reenviar E-mail com Link">
                                         <i class="fas fa-envelope"></i>
                                     </button>
                                     <?php endif; ?>

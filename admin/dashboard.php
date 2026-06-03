@@ -28,7 +28,7 @@ $stmt = $conn->prepare("
         COALESCE(SUM(valor), 0)      AS vendas_totais,
         COALESCE(SUM(quantidade), 0) AS consumo_total,
         COUNT(*)                     AS total_pedidos
-    FROM \`order\`
+    FROM `order`
     WHERE checkout_status = 'SUCCESSFUL'
     AND YEAR(created_at) = ?" . eid_where());
 $stmt->execute(array_merge([$ano_atual], eid_param()));
@@ -38,7 +38,7 @@ $stmt = $conn->prepare("
     SELECT
         COALESCE(SUM(valor), 0)      AS vendas_mensais,
         COALESCE(SUM(quantidade), 0) AS consumo_mensal
-    FROM \`order\`
+    FROM `order`
     WHERE checkout_status = 'SUCCESSFUL'
     AND YEAR(created_at) = ?
     AND MONTH(created_at) = ?" . eid_where());
@@ -65,7 +65,7 @@ $vendas_por_mes = [];
 for ($m = 1; $m <= 12; $m++) {
     $stmt = $conn->prepare("
         SELECT COALESCE(SUM(valor), 0) AS total
-        FROM \`order\`
+        FROM `order`
         WHERE checkout_status = 'SUCCESSFUL'
         AND YEAR(created_at) = ? AND MONTH(created_at) = ?" . eid_where());
     $stmt->execute(array_merge([$ano_atual, $m], eid_param()));
@@ -79,7 +79,7 @@ for ($m = 1; $m <= 12; $m++) {
 $vendas_diarias = [];
 $stmt = $conn->prepare("
     SELECT DATE(created_at) AS dia, COALESCE(SUM(valor), 0) AS total
-    FROM \`order\`
+    FROM `order`
     WHERE checkout_status = 'SUCCESSFUL'
     AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)" . eid_where() . "
     GROUP BY DATE(created_at)
@@ -104,7 +104,7 @@ $stmt = $conn->prepare("
     SELECT b.name AS bebida,
            COUNT(*) AS pedidos,
            COALESCE(SUM(o.valor), 0) AS total_valor
-    FROM \`order\` o
+    FROM `order` o
     INNER JOIN bebidas b ON o.bebida_id = b.id
     WHERE o.checkout_status = 'SUCCESSFUL'
     AND o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)" . eid_where() . "
@@ -126,7 +126,7 @@ $stmt = $conn->prepare("
            COALESCE(SUM(o.valor), 0) AS faturamento_total
     FROM estabelecimentos e
     LEFT JOIN tap t ON t.estabelecimento_id = e.id
-    LEFT JOIN \`order\` o ON o.estabelecimento_id = e.id
+    LEFT JOIN `order` o ON o.estabelecimento_id = e.id
         AND o.checkout_status = 'SUCCESSFUL'
         AND YEAR(o.created_at) = ?
         AND MONTH(o.created_at) = ?

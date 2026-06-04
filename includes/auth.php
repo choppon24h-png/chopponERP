@@ -4,6 +4,7 @@
  */
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/AuditLog.php';
 
 /**
  * Realiza login do usuário
@@ -26,6 +27,7 @@ function login($email, $password) {
         
         if (!$user) {
             Logger::auth("Login falhou: Usuário não encontrado", ['email' => $email]);
+            AuditLog::login($conn, null, false, $email);
             return false;
         }
         
@@ -67,6 +69,9 @@ function login($email, $password) {
                 'type' => $user['type']
             ]);
 
+            // ── Auditoria: login bem-sucedido ────────────────────────────────────────────
+            AuditLog::login($conn, $user, true, $email);
+
             // ── Notificação Telegram: acesso master ─────────────────────────────────────────
             if ((int)$user['type'] === 1) {
                 try {
@@ -102,6 +107,7 @@ function login($email, $password) {
         }
         
         Logger::auth("Login falhou: Senha incorreta", ['email' => $email]);
+        AuditLog::login($conn, $user, false, $email);
         return false;
         
     } catch (Exception $e) {
@@ -117,6 +123,15 @@ function login($email, $password) {
  * Realiza logout do usuário
  */
 function logout() {
+    // ── Auditoria: logout ────────────────────────────────────────────────────
+    try {
+        if (isset($_SESSION['user_id'])) {
+            $conn_al = getDBConnection();
+            AuditLog::logout($conn_al);
+        }
+    } catch (Exception $e_al) {
+        // silencioso — não impede o logout
+    }
     session_unset();
     session_destroy();
     redirect('index.php');

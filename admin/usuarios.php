@@ -5,6 +5,7 @@ $current_page = 'usuarios';
 require_once '../includes/config.php';
 require_once '../includes/auth.php';
 require_once '../includes/permissions.php';
+require_once '../includes/AuditLog.php';
 requireAdminGeral();
 
 $conn = getDBConnection();
@@ -38,6 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             
+            AuditLog::acao($conn, 'criar', "Usuário criado: {$name} ({$email}) — Tipo: " . getUserType($type), 'admin/usuarios.php');
             $success = 'Usuário cadastrado com sucesso!';
         } else {
             $error = 'Erro ao cadastrar usuário. Email pode já estar em uso.';
@@ -69,13 +71,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
+        AuditLog::acao($conn, 'editar', "Usuário editado: #{$id} {$name} ({$email}) — Tipo: " . getUserType($type), 'admin/usuarios.php');
         $success = 'Usuário atualizado com sucesso!';
     }
     
     if ($action === 'delete') {
         $id = $_POST['id'];
+        // Buscar dados antes de excluir para o log
+        $stmt_del = $conn->prepare("SELECT name, email FROM users WHERE id = ? LIMIT 1");
+        $stmt_del->execute([$id]);
+        $user_del = $stmt_del->fetch();
+
         $stmt = $conn->prepare("DELETE FROM users WHERE id = ?");
         if ($stmt->execute([$id])) {
+            $nome_del  = $user_del['name']  ?? "#{$id}";
+            $email_del = $user_del['email'] ?? '';
+            AuditLog::acao($conn, 'excluir', "Usuário excluído: #{$id} {$nome_del} ({$email_del})", 'admin/usuarios.php');
             $success = 'Usuário excluído com sucesso!';
         } else {
             $error = 'Erro ao excluir usuário.';
@@ -96,7 +107,12 @@ require_once '../includes/header.php';
 
 <div class="page-header">
     <h1>Usuários</h1>
-    <button class="btn btn-primary" onclick="openModal('modalUsuario')">+ Novo Usuário</button>
+    <div style="display:flex;gap:10px;align-items:center;">
+        <a href="audit_log.php" class="btn btn-secondary">
+            <i class="fas fa-shield-alt"></i> Log de Auditoria
+        </a>
+        <button class="btn btn-primary" onclick="openModal('modalUsuario')">+ Novo Usuário</button>
+    </div>
 </div>
 
 <?php if ($success): ?>
@@ -131,6 +147,11 @@ require_once '../includes/header.php';
                         <td><?php echo formatDateTimeBR($usuario['created_at']); ?></td>
                         <td>
                             <div class="action-buttons">
+                                <a href="audit_log.php?user_id=<?php echo $usuario['id']; ?>"
+                                   class="btn btn-sm btn-secondary"
+                                   title="Ver log de acesso deste usuário">
+                                    <i class="fas fa-history"></i>
+                                </a>
                                 <button class="btn btn-sm btn-primary" onclick='editUsuario(<?php echo json_encode($usuario); ?>)'>Editar</button>
                                 <?php if ($usuario['id'] != $_SESSION['user_id']): ?>
                                 <form method="POST" style="display: inline;" onsubmit="return confirmDelete('Deseja excluir este usuário?')">

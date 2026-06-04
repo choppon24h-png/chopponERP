@@ -269,7 +269,7 @@ $etapa_labels = [
 <?php endif; ?>
 
 <!-- Estatísticas -->
-<div class="stats-grid" style="grid-template-columns:repeat(5,1fr)">
+<div class="stats-grid">
     <div class="stat-card">
         <div class="stat-icon bg-primary"><i class="fas fa-chart-line"></i></div>
         <div class="stat-info"><div class="stat-number"><?php echo $stats['total']; ?></div><div class="stat-label">Total</div></div>

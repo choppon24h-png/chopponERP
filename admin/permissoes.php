@@ -99,7 +99,7 @@ require_once '../includes/header.php';
 <?php endif; ?>
 
 <!-- ── Cards de Resumo ───────────────────────────────────────────────────────── -->
-<div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px;">
+<div class="stats-grid">
     <div class="stats-card">
         <div class="stats-icon" style="background:rgba(0,102,204,0.12);color:var(--primary-color);">
             <i class="fas fa-users"></i>
@@ -580,7 +580,7 @@ function renderPermissions(permissions) {
                 <i class="${icon}"></i> ${cat}
                 <span style="margin-left:auto;font-size:11px;font-weight:400;color:#888;">${grouped[cat].length} módulo${grouped[cat].length != 1 ? 's' : ''}</span>
             </div>
-            <table class="perm-table">
+            <div class="table-responsive"><table class="perm-table">
                 <thead>
                     <tr>
                         <th style="width:45%;">Módulo</th>
@@ -591,7 +591,7 @@ function renderPermissions(permissions) {
                     </tr>
                 </thead>
                 <tbody id="tbody_${cat.replace(/\s/g,'_')}"></tbody>
-            </table>`;
+            </table></div>`;
 
         const tbody = wrap.querySelector('tbody');
         grouped[cat].forEach(p => {

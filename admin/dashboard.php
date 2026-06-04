@@ -287,8 +287,8 @@ require_once '../includes/header.php';
                                  font-weight:600; display:inline-block; }
 
 /* Royalties tabela */
-.royalties-table-wrap { overflow-x:auto; }
-.royalties-table { width:100%; border-collapse:collapse; font-size:13px; }
+.royalties-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.royalties-table { width:100%; border-collapse:collapse; font-size:13px; min-width:600px; }
 .royalties-table th { background:#f5f5f5; padding:8px 10px; text-align:center;
                        font-weight:600; border-bottom:2px solid #e0e0e0; white-space:nowrap; }
 .royalties-table td { padding:7px 10px; border-bottom:1px solid #f0f0f0; text-align:center; }
@@ -299,6 +299,28 @@ require_once '../includes/header.php';
 .roy-cell.pend    { color:#f57c00; font-weight:600; }
 .roy-cell.vazio   { color:#ccc; }
 .roy-total-row td { background:#e3f2fd; font-weight:700; }
+
+/* ── Responsividade do Dashboard ──────────────────────── */
+@media (max-width:768px) {
+    .dash-cards { grid-template-columns: repeat(2,1fr); gap:10px; margin-bottom:16px; }
+    .dash-card  { padding:14px 16px; }
+    .dash-card .value { font-size:20px; }
+    .chart-wrap { height:200px; }
+    .fat-estab-item { flex-wrap:wrap; gap:6px; }
+    .fat-estab-bar-wrap { min-width:100%; order:3; }
+    .fat-estab-val  { order:2; }
+    .fat-estab-taps { order:4; }
+    .tap-cards-grid { grid-template-columns: repeat(2,1fr); }
+}
+@media (max-width:480px) {
+    .dash-cards { grid-template-columns: 1fr; }
+    .dash-card .value { font-size:22px; }
+    .chart-header { flex-direction:column; align-items:flex-start; gap:8px; }
+    .chart-tabs { flex-wrap:wrap; }
+    .tap-cards-grid { grid-template-columns: 1fr; }
+    .conta-vencer-item { flex-direction:column; align-items:flex-start; }
+    .conta-vencer-item > div:last-child { align-items:flex-start !important; flex-direction:row; gap:8px; }
+}
 </style>
 
 <div class="page-header">

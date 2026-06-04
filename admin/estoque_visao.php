@@ -198,7 +198,7 @@ require_once '../includes/header.php';
     </div>
 
     <!-- ── Linha 2: 3 cards de valor ──────────────────────────────────────── -->
-    <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+    <div class="stats-grid">
         <div class="stat-card">
             <div class="stat-icon bg-info"><i class="fas fa-dollar-sign"></i></div>
             <div class="stat-info">

@@ -625,6 +625,8 @@ if (!isAdminGeral()) {
     </style>
 </head>
 <body>
+    <!-- Backdrop para sidebar mobile -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
     <div class="admin-wrapper">
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">

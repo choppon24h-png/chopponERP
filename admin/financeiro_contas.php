@@ -281,7 +281,7 @@ $contas_vencidas = array_filter($contas, function($c) {
 </div>
 <?php endif; ?>
 <!-- Cards de resumo -->
-<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 20px;">
+<div class="stats-grid">
     <div class="stat-card">
         <div class="stat-icon" style="background-color: #ffc107;">⏳</div>
         <div class="stat-info">

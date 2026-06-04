@@ -4,26 +4,61 @@
  */
 
 // ========================================
-// Menu Toggle (Mobile)
+// Menu Toggle (Mobile) + Backdrop
 // ========================================
 document.addEventListener('DOMContentLoaded', function() {
     const menuToggle = document.getElementById('menuToggle');
-    const sidebar = document.getElementById('sidebar');
-    
+    const sidebar    = document.getElementById('sidebar');
+    const backdrop   = document.getElementById('sidebarBackdrop');
+
+    function openSidebar() {
+        sidebar.classList.add('active');
+        if (backdrop) backdrop.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeSidebar() {
+        sidebar.classList.remove('active');
+        if (backdrop) backdrop.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+
+    // Expor função globalmente para o onclick do backdrop no HTML
+    window.closeSidebarMobile = closeSidebar;
+
     if (menuToggle && sidebar) {
-        menuToggle.addEventListener('click', function() {
-            sidebar.classList.toggle('active');
-        });
-        
-        // Fechar sidebar ao clicar fora (mobile)
-        document.addEventListener('click', function(event) {
-            if (window.innerWidth <= 1024) {
-                if (!sidebar.contains(event.target) && !menuToggle.contains(event.target)) {
-                    sidebar.classList.remove('active');
-                }
+        menuToggle.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (sidebar.classList.contains('active')) {
+                closeSidebar();
+            } else {
+                openSidebar();
             }
         });
     }
+
+    // Fechar ao clicar no backdrop
+    if (backdrop) {
+        backdrop.addEventListener('click', closeSidebar);
+    }
+
+    // Fechar ao clicar em link do menu (mobile)
+    if (sidebar) {
+        sidebar.querySelectorAll('a:not([onclick])').forEach(function(link) {
+            link.addEventListener('click', function() {
+                if (window.innerWidth <= 1024) {
+                    closeSidebar();
+                }
+            });
+        });
+    }
+
+    // Fechar ao redimensionar para desktop
+    window.addEventListener('resize', function() {
+        if (window.innerWidth > 1024) {
+            closeSidebar();
+        }
+    });
 });
 
 // ========================================

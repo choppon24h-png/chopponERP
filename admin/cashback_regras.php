@@ -183,7 +183,7 @@ require_once '../includes/header.php';
         <?php if (empty($regras)): ?>
         <p class="text-muted text-center">Nenhuma regra cadastrada.</p>
         <?php else: ?>
-        <table class="table">
+        <div class="table-responsive"><table class="table">
             <thead>
                 <tr>
                     <th>Prioridade</th>
@@ -289,7 +289,7 @@ require_once '../includes/header.php';
                 </tr>
                 <?php endforeach; ?>
             </tbody>
-        </table>
+        </table></div>
         <?php endif; ?>
     </div>
 </div>

@@ -256,7 +256,7 @@ require_once '../includes/header.php';
     <?php endif; ?>
 
     <!-- Cards de estatísticas -->
-    <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);">
+    <div class="stats-grid">
         <div class="stat-card">
             <div class="stat-icon yellow"><i class="fas fa-clock"></i></div>
             <div class="stat-info"><div class="stat-number"><?= $stats['aguardando'] ?? 0 ?></div><div class="stat-label">Aguardando</div></div>

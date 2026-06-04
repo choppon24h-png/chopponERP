@@ -416,7 +416,7 @@ require_once '../includes/header.php';
         <small style="color:var(--gray-500);margin-left:auto;">Atualizado ao salvar</small>
     </div>
     <div class="card-body" style="padding:0;">
-        <table class="roteamento-table">
+        <div class="table-responsive"><table class="roteamento-table">
             <thead>
                 <tr>
                     <th>Meio de Pagamento</th>
@@ -483,7 +483,7 @@ require_once '../includes/header.php';
             </tr>
             <?php endforeach; ?>
             </tbody>
-        </table>
+        </table></div>
     </div>
 </div>
 <?php endif; ?>

@@ -261,7 +261,7 @@ require_once '../includes/header.php';
 <!-- Tabela de Clientes -->
 <div class="card">
     <div class="card-body">
-        <table class="table" id="tabelaClientes">
+        <div class="table-responsive"><table class="table" id="tabelaClientes">
             <thead>
                 <tr>
                     <th>Nome</th>
@@ -334,7 +334,7 @@ require_once '../includes/header.php';
                 </tr>
                 <?php endforeach; ?>
             </tbody>
-        </table>
+        </table></div>
     </div>
 </div>
 

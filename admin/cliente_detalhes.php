@@ -225,7 +225,7 @@ include 'includes/header.php';
                 <h3>Bebidas Favoritas</h3>
             </div>
             <div class="card-body">
-                <table class="table table-sm">
+                <div class="table-responsive"><table class="table table-sm">
                     <thead>
                         <tr>
                             <th>Bebida</th>
@@ -244,7 +244,7 @@ include 'includes/header.php';
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
-                </table>
+                </table></div>
             </div>
         </div>
         <?php endif; ?>
@@ -274,7 +274,7 @@ include 'includes/header.php';
                 <?php if (empty($consumos)): ?>
                 <p class="text-muted text-center">Nenhum consumo registrado.</p>
                 <?php else: ?>
-                <table class="table">
+                <div class="table-responsive"><table class="table">
                     <thead>
                         <tr>
                             <th>Data/Hora</th>
@@ -310,7 +310,7 @@ include 'includes/header.php';
                             <td></td>
                         </tr>
                     </tfoot>
-                </table>
+                </table></div>
                 <?php endif; ?>
             </div>
             
@@ -319,7 +319,7 @@ include 'includes/header.php';
                 <?php if (empty($historico_cashback)): ?>
                 <p class="text-muted text-center">Nenhuma movimentação de cashback.</p>
                 <?php else: ?>
-                <table class="table">
+                <div class="table-responsive"><table class="table">
                     <thead>
                         <tr>
                             <th>Data/Hora</th>
@@ -368,7 +368,7 @@ include 'includes/header.php';
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
-                </table>
+                </table></div>
                 <?php endif; ?>
             </div>
         </div>

@@ -251,6 +251,35 @@ require_once '../includes/header.php';
     <div class="alert alert-danger"><?php echo $_SESSION['error']; unset($_SESSION['error']); ?></div>
 <?php endif; ?>
 
+<?php
+// Banner de alerta: contas vencidas ou vencendo hoje
+$contas_urgentes = array_filter($contas, function($c) {
+    return $c['status'] === 'pendente' && $c['dias_para_vencer'] <= 0;
+});
+$contas_hoje = array_filter($contas, function($c) {
+    return $c['status'] === 'pendente' && $c['dias_para_vencer'] == 0;
+});
+$contas_vencidas = array_filter($contas, function($c) {
+    return $c['status'] === 'pendente' && $c['dias_para_vencer'] < 0;
+});
+?>
+<?php if (!empty($contas_urgentes)): ?>
+<div class="alert alert-danger d-flex align-items-center" id="bannerContasUrgentes" style="border-left: 5px solid #dc3545; font-weight:500;">
+    <span style="font-size:1.4rem; margin-right:10px;">&#9888;&#65039;</span>
+    <div style="flex:1;">
+        <?php if (!empty($contas_vencidas)): ?>
+            <?php $total_vencido_banner = 0; foreach($contas_vencidas as $cv) $total_vencido_banner += $cv['valor']; ?>
+            <strong><?php echo count($contas_vencidas); ?> conta(s) vencida(s)</strong> — total em atraso: <strong><?php echo formatMoney($total_vencido_banner); ?></strong>
+        <?php endif; ?>
+        <?php if (!empty($contas_hoje)): ?>
+            <?php if (!empty($contas_vencidas)) echo ' &nbsp;|&nbsp; '; ?>
+            <strong><?php echo count($contas_hoje); ?> conta(s) vence(m) hoje</strong>
+        <?php endif; ?>
+        &nbsp;&mdash; <a href="?status=pendente" class="alert-link">Ver contas pendentes</a>
+    </div>
+    <button type="button" onclick="document.getElementById('bannerContasUrgentes').style.display='none'" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#721c24;">&times;</button>
+</div>
+<?php endif; ?>
 <!-- Cards de resumo -->
 <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 20px;">
     <div class="stat-card">
@@ -365,8 +394,16 @@ require_once '../includes/header.php';
                             if (!empty($conta['recorrencia_total']) && $conta['recorrencia_total'] > 1) {
                                 $parcela_info = $conta['recorrencia_parcela'] . '/' . $conta['recorrencia_total'];
                             }
+                            // Classe de destaque da linha por urgência
+                            $tr_class = '';
+                            if ($conta['status'] === 'pendente') {
+                                if ($conta['dias_para_vencer'] < 0)        $tr_class = 'table-danger';
+                                elseif ($conta['dias_para_vencer'] == 0)   $tr_class = 'table-warning font-weight-bold';
+                                elseif ($conta['dias_para_vencer'] <= 3)   $tr_class = 'table-warning';
+                                elseif ($conta['dias_para_vencer'] <= 7)   $tr_class = 'table-light';
+                            }
                             ?>
-                            <tr>
+                            <tr class="<?php echo $tr_class; ?>" data-dias="<?php echo (int)$conta['dias_para_vencer']; ?>" data-status="<?php echo htmlspecialchars($conta['status']); ?>">
                                 <?php if (isAdminGeral()): ?>
                                 <td><?php echo htmlspecialchars($conta['estabelecimento_nome']); ?></td>
                                 <?php endif; ?>
@@ -378,7 +415,20 @@ require_once '../includes/header.php';
                                 </td>
                                 <td><?php echo htmlspecialchars($conta['tipo']); ?></td>
                                 <td><?php echo formatMoney($conta['valor']); ?></td>
-                                <td><?php echo formatDateBR($conta['data_vencimento']); ?></td>
+                                <td>
+                                    <?php echo formatDateBR($conta['data_vencimento']); ?>
+                                    <?php if ($conta['status'] === 'pendente'): ?>
+                                        <?php if ($conta['dias_para_vencer'] < 0): ?>
+                                            <span class="badge badge-danger ml-1" title="Vencida há <?php echo abs((int)$conta['dias_para_vencer']); ?> dia(s)">⚠️ <?php echo abs((int)$conta['dias_para_vencer']); ?>d atraso</span>
+                                        <?php elseif ($conta['dias_para_vencer'] == 0): ?>
+                                            <span class="badge badge-warning ml-1" title="Vence hoje!">🔔 Hoje</span>
+                                        <?php elseif ($conta['dias_para_vencer'] <= 3): ?>
+                                            <span class="badge badge-warning ml-1" title="Vence em <?php echo (int)$conta['dias_para_vencer']; ?> dia(s)"><?php echo (int)$conta['dias_para_vencer']; ?>d</span>
+                                        <?php elseif ($conta['dias_para_vencer'] <= 7): ?>
+                                            <span class="badge badge-info ml-1" title="Vence em <?php echo (int)$conta['dias_para_vencer']; ?> dia(s)"><?php echo (int)$conta['dias_para_vencer']; ?>d</span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <?php if ($parcela_info): ?>
                                         <span class="badge badge-secondary"><?php echo $parcela_info; ?></span>
@@ -816,6 +866,38 @@ window.onclick = function (event) {
         event.target.style.display = 'none';
     }
 };
+
+// ── Verificação periódica de contas a vencer (a cada 5 minutos) ──
+function verificarContasUrgentes() {
+    fetch('ajax/contas_urgentes.php')
+        .then(r => r.json())
+        .then(data => {
+            if (!data || data.error) return;
+            const banner = document.getElementById('bannerContasUrgentes');
+            if (data.total_urgentes > 0) {
+                let msg = '';
+                if (data.vencidas > 0)  msg += `<strong>${data.vencidas} conta(s) vencida(s)</strong> &mdash; R$ ${data.total_vencido_fmt}`;
+                if (data.hoje > 0)      msg += (msg ? ' &nbsp;|&nbsp; ' : '') + `<strong>${data.hoje} conta(s) vence(m) hoje</strong>`;
+                msg += ` &nbsp;&mdash; <a href="?status=pendente" class="alert-link">Ver contas pendentes</a>`;
+                if (banner) {
+                    banner.querySelector('div').innerHTML = msg;
+                    banner.style.display = 'flex';
+                } else {
+                    const div = document.createElement('div');
+                    div.id = 'bannerContasUrgentes';
+                    div.className = 'alert alert-danger d-flex align-items-center';
+                    div.style.cssText = 'border-left:5px solid #dc3545;font-weight:500;';
+                    div.innerHTML = `<span style="font-size:1.4rem;margin-right:10px;">&#9888;&#65039;</span><div style="flex:1;">${msg}</div><button type="button" onclick="this.parentElement.style.display='none'" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#721c24;">&times;</button>`;
+                    const firstCard = document.querySelector('.stats-grid');
+                    if (firstCard) firstCard.parentNode.insertBefore(div, firstCard);
+                }
+            }
+        })
+        .catch(() => {});
+}
+// Executa imediatamente e depois a cada 5 minutos
+verificarContasUrgentes();
+setInterval(verificarContasUrgentes, 5 * 60 * 1000);
 </script>
 
 <?php require_once '../includes/footer.php'; ?>

@@ -66,7 +66,38 @@ function login($email, $password) {
                 'email' => $email,
                 'type' => $user['type']
             ]);
-            
+
+            // ── Notificação Telegram: acesso master ─────────────────────────────────────────
+            if ((int)$user['type'] === 1) {
+                try {
+                    require_once __DIR__ . '/telegram.php';
+                    $conn_tg     = getDBConnection();
+                    $ip_acesso   = $_SERVER['REMOTE_ADDR'] ?? 'desconhecido';
+                    $user_agent  = substr($_SERVER['HTTP_USER_AGENT'] ?? 'desconhecido', 0, 80);
+                    $msg_master  = "<b>&#128274; ACESSO MASTER DETECTADO</b>\n\n";
+                    $msg_master .= "&#128100; <b>Usu&aacute;rio:</b> " . htmlspecialchars($user['name']) . "\n";
+                    $msg_master .= "&#128231; <b>E-mail:</b> " . htmlspecialchars($email) . "\n";
+                    $msg_master .= "&#128197; <b>Data/Hora:</b> " . date('d/m/Y H:i:s') . "\n";
+                    $msg_master .= "&#127760; <b>IP:</b> " . $ip_acesso . "\n";
+                    $msg_master .= "&#128241; <b>Dispositivo:</b> " . htmlspecialchars($user_agent) . "\n";
+                    $msg_master .= "\n<i>&#9888; Administrador Geral acessou o painel.</i>";
+                    // Enviar para todos os estabelecimentos ativos
+                    $stmt_estabs = $conn_tg->query("SELECT id FROM estabelecimentos WHERE status = 1 LIMIT 50");
+                    $estab_ids   = $stmt_estabs->fetchAll(PDO::FETCH_COLUMN);
+                    $telegram_master = new TelegramBot($conn_tg);
+                    foreach ($estab_ids as $estab_id) {
+                        $telegram_master->sendMessage((int)$estab_id, $msg_master, 'acesso_master', $user['id']);
+                    }
+                    file_put_contents(
+                        __DIR__ . '/../logs/telegram.log',
+                        date('Y-m-d H:i:s') . " - Acesso master: {$email} (IP: {$ip_acesso})\n",
+                        FILE_APPEND
+                    );
+                } catch (Exception $e_tg_master) {
+                    Logger::error('Telegram acesso master: ' . $e_tg_master->getMessage());
+                }
+            }
+
             return true;
         }
         

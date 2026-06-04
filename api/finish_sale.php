@@ -226,6 +226,37 @@ if ($status_liberacao === 'FINISHED') {
     }
 }
 
+// ── Notificação Telegram de venda (FINISHED) ─────────────────────────────────────────
+if ($status_liberacao === 'FINISHED') {
+    try {
+        require_once '../includes/telegram.php';
+        $stmt_tg = $conn->prepare("
+            SELECT o.*, b.name AS bebida_nome, b.brand AS bebida_marca,
+                   e.name AS estabelecimento_nome
+            FROM `order` o
+            LEFT JOIN bebidas b ON o.bebida_id = b.id
+            LEFT JOIN estabelecimentos e ON o.estabelecimento_id = e.id
+            WHERE o.id = ? AND o.telegram_notificado = 0
+            LIMIT 1
+        ");
+        $stmt_tg->execute([$order['id']]);
+        $order_tg = $stmt_tg->fetch(PDO::FETCH_ASSOC);
+        if ($order_tg) {
+            $telegram = new TelegramBot($conn);
+            $msg_venda = TelegramBot::formatVendaMessage($order_tg);
+            if ($telegram->sendMessage($order_tg['estabelecimento_id'], $msg_venda, 'venda', $order_tg['id'])) {
+                $stmt_tg2 = $conn->prepare("UPDATE `order` SET telegram_notificado = 1 WHERE id = ?");
+                $stmt_tg2->execute([$order_tg['id']]);
+                file_put_contents(__DIR__ . '/../logs/telegram.log',
+                    date('Y-m-d H:i:s') . " - finish_sale: Telegram enviado pedido #{$order['id']}\n", FILE_APPEND);
+            }
+        }
+    } catch (Exception $e_tg) {
+        file_put_contents(__DIR__ . '/../logs/telegram.log',
+            date('Y-m-d H:i:s') . " - finish_sale: ERRO Telegram pedido #{$order['id']}: " . $e_tg->getMessage() . "\n", FILE_APPEND);
+    }
+}
+
 ob_clean();
 echo json_encode([
     'success'             => true,

@@ -109,6 +109,8 @@ class TelegramBot {
             case 'vencimento_2d':
             case 'vencido':
                 return (bool)$config['notificar_vencimento'];
+            case 'acesso_master':
+                return isset($config['notif_acesso_master']) ? (bool)$config['notif_acesso_master'] : true;
             default:
                 return true; // Outros tipos sempre habilitados
         }

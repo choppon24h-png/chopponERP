@@ -14,9 +14,9 @@ $eid = isAdminGeral() ? null : getEstabelecimentoId();
 function eid_where(string $alias = 'o'): string {
     global $eid;
     if (!$eid) return '';
-    // Quando alias é vazio, usa o campo sem prefixo; caso contrário usa alias.campo
+    // Usa placeholder ? para bind seguro via eid_param()
     $campo = $alias !== '' ? "{$alias}.estabelecimento_id" : 'estabelecimento_id';
-    return " AND {$campo} = {$eid}";
+    return " AND {$campo} = ?";
 }
 function eid_param(): array {
     global $eid;

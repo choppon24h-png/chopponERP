@@ -146,52 +146,56 @@ require_once '../includes/header.php';
 <!-- ── Filtros ── -->
 <div class="card mb-3">
     <div class="card-body">
-        <form method="GET" class="row g-2 align-items-end">
-            <div class="col-md-2">
-                <label class="form-label">Data Início</label>
-                <input type="date" name="data_inicio" class="form-control" value="<?= htmlspecialchars($data_inicio) ?>">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label">Data Fim</label>
-                <input type="date" name="data_fim" class="form-control" value="<?= htmlspecialchars($data_fim) ?>">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label">Status</label>
-                <select name="status" class="form-control">
-                    <option value="">Todos</option>
-                    <option value="SUCCESSFUL" <?= $status === 'SUCCESSFUL' ? 'selected' : '' ?>>Sucesso</option>
-                    <option value="PENDING"    <?= $status === 'PENDING'    ? 'selected' : '' ?>>Pendente</option>
-                    <option value="CANCELLED"  <?= $status === 'CANCELLED'  ? 'selected' : '' ?>>Cancelado</option>
-                    <option value="FAILED"     <?= $status === 'FAILED'     ? 'selected' : '' ?>>Falhou</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label">Método</label>
-                <select name="metodo" class="form-control">
-                    <option value="">Todos</option>
-                    <option value="pix"    <?= $metodo === 'pix'    ? 'selected' : '' ?>>PIX</option>
-                    <option value="credit" <?= $metodo === 'credit' ? 'selected' : '' ?>>Crédito</option>
-                    <option value="debit"  <?= $metodo === 'debit'  ? 'selected' : '' ?>>Débito</option>
-                </select>
-            </div>
-            <!-- Filtro de Estabelecimento: visível para admin e franqueado com múltiplos -->
-            <?php if (!empty($estabs_lista) && (isAdminGeral() || count($estabs_lista) > 1)): ?>
-            <div class="col-md-3">
-                <label class="form-label">Estabelecimento</label>
-                <select name="estabelecimento_id" class="form-control">
-                    <option value="0">Todos</option>
-                    <?php foreach ($estabs_lista as $el): ?>
-                    <option value="<?= $el['id'] ?>" <?= $filtro_estab_id == $el['id'] ? 'selected' : '' ?>>
-                        <?= htmlspecialchars($el['name']) ?>
-                        <?= $el['is_matriz'] ? ' ★' : '' ?>
-                    </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <?php endif; ?>
-            <div class="col-md-1">
-                <label class="form-label">&nbsp;</label>
-                <button type="submit" class="btn btn-primary btn-block w-100">Filtrar</button>
+        <form method="GET">
+            <div class="row align-items-end g-2">
+                <div class="col-md-2 col-sm-6">
+                    <label class="form-label">Data Início</label>
+                    <input type="date" name="data_inicio" class="form-control" value="<?= htmlspecialchars($data_inicio) ?>">
+                </div>
+                <div class="col-md-2 col-sm-6">
+                    <label class="form-label">Data Fim</label>
+                    <input type="date" name="data_fim" class="form-control" value="<?= htmlspecialchars($data_fim) ?>">
+                </div>
+                <div class="col-md-2 col-sm-6">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-control">
+                        <option value="">Todos</option>
+                        <option value="SUCCESSFUL" <?= $status === 'SUCCESSFUL' ? 'selected' : '' ?>>Sucesso</option>
+                        <option value="PENDING"    <?= $status === 'PENDING'    ? 'selected' : '' ?>>Pendente</option>
+                        <option value="CANCELLED"  <?= $status === 'CANCELLED'  ? 'selected' : '' ?>>Cancelado</option>
+                        <option value="FAILED"     <?= $status === 'FAILED'     ? 'selected' : '' ?>>Falhou</option>
+                    </select>
+                </div>
+                <div class="col-md-2 col-sm-6">
+                    <label class="form-label">Método</label>
+                    <select name="metodo" class="form-control">
+                        <option value="">Todos</option>
+                        <option value="pix"    <?= $metodo === 'pix'    ? 'selected' : '' ?>>PIX</option>
+                        <option value="credit" <?= $metodo === 'credit' ? 'selected' : '' ?>>Crédito</option>
+                        <option value="debit"  <?= $metodo === 'debit'  ? 'selected' : '' ?>>Débito</option>
+                    </select>
+                </div>
+                <?php if (!empty($estabs_lista) && (isAdminGeral() || count($estabs_lista) > 1)): ?>
+                <div class="col-md-3 col-sm-12">
+                    <label class="form-label">Estabelecimento</label>
+                    <select name="estabelecimento_id" class="form-control">
+                        <option value="0">Todos</option>
+                        <?php foreach ($estabs_lista as $el): ?>
+                        <option value="<?= $el['id'] ?>" <?= $filtro_estab_id == $el['id'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($el['name']) ?><?= $el['is_matriz'] ? ' ★' : '' ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-1 col-sm-12">
+                    <label class="form-label d-block">&nbsp;</label>
+                    <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+                </div>
+                <?php else: ?>
+                <div class="col-md-4 col-sm-12 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary">Filtrar</button>
+                </div>
+                <?php endif; ?>
             </div>
         </form>
     </div>

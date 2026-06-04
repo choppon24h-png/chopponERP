@@ -35,8 +35,20 @@ $menu_structure = [
     'pagamentos' => [
         'title' => 'Pagamentos',
         'icon' => 'fas fa-credit-card',
-        'url' => 'admin/pagamentos.php',
-        'page_key' => 'pagamentos'
+        'submenu' => [
+            'pagamentos' => [
+                'title' => 'Gateways de Pagamento',
+                'icon' => 'fas fa-plug',
+                'url' => 'admin/pagamentos.php',
+                'page_key' => 'pagamentos'
+            ],
+            'meios_pagamento_contas' => [
+                'title' => 'Roteamento por Conta',
+                'icon' => 'fas fa-route',
+                'url' => 'admin/meios_pagamento_contas.php',
+                'page_key' => 'meios_pagamento_contas'
+            ],
+        ]
     ],
     'pedidos' => [
         'title' => 'Pedidos',

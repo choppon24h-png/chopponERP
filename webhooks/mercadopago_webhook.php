@@ -1,7 +1,7 @@
 <?php
 /**
  * Webhook Mercado Pago — PIX de pedidos (create_order)
- * v2.0 — Multi-estabelecimento
+ * v2.1 — Multi-estabelecimento + Lançamento Bancário Automático
  *
  * URL ÚNICA para todos os estabelecimentos:
  *   https://ochoppoficial.com.br/webhooks/mercadopago_webhook.php
@@ -17,6 +17,9 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../includes/config.php';
 if (!class_exists('PaymentConfigManager')) {
     require_once __DIR__ . '/../includes/PaymentConfigManager.php';
+}
+if (!class_exists('LancamentoBancarioHelper')) {
+    require_once __DIR__ . '/../includes/LancamentoBancarioHelper.php';
 }
 
 $input = file_get_contents('php://input');
@@ -189,6 +192,34 @@ try {
         'payment_id'         => $payment_id,
         'new_status'         => $new_status,
     ]);
+
+    // ── 5. Lançamento automático na conta bancária (evento PAID) ─────────────
+    if (in_array($new_status, ['PAID', 'SUCCESSFUL', 'APPROVED'])) {
+        try {
+            $stmt_lanc = $conn->prepare("
+                SELECT o.*, b.name AS bebida_nome
+                FROM `order` o
+                LEFT JOIN bebidas b ON o.bebida_id = b.id
+                WHERE o.id = ?
+                LIMIT 1
+            ");
+            $stmt_lanc->execute([$order['id']]);
+            $order_lanc = $stmt_lanc->fetch(PDO::FETCH_ASSOC);
+            if ($order_lanc) {
+                $res_lanc = LancamentoBancarioHelper::lancarPedido($conn, $order_lanc, 0);
+                Logger::info('MercadoPago Webhook - lancamento bancario', [
+                    'order_id'   => $order['id'],
+                    'result'     => $res_lanc['message'],
+                    'lancamento' => $res_lanc['lancamento_id'],
+                ]);
+            }
+        } catch (\Exception $e_lanc) {
+            Logger::error('MercadoPago Webhook - ERRO lancamento bancario', [
+                'order_id' => $order['id'],
+                'error'    => $e_lanc->getMessage(),
+            ]);
+        }
+    }
 
 } catch (\Exception $e) {
     Logger::error('MercadoPago Webhook - erro', ['error' => $e->getMessage()]);

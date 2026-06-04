@@ -12,6 +12,7 @@ ob_start();
 
 require_once '../includes/config.php';
 require_once '../includes/telegram.php';
+require_once '../includes/LancamentoBancarioHelper.php';
 
 // Desabilitar output de erros para não interferir na resposta
 ini_set('display_errors', 0);
@@ -128,6 +129,33 @@ if ($json && isset($json->id)) {
                 ]);
             }
             
+            // ── Lançamento automático na conta bancária (evento PAID) ──────────────
+            if (in_array($status, ['PAID', 'SUCCESSFUL', 'APPROVED'])) {
+                try {
+                    $stmt_lanc = $conn->prepare("
+                        SELECT o.*, b.name AS bebida_nome
+                        FROM `order` o
+                        LEFT JOIN bebidas b ON o.bebida_id = b.id
+                        WHERE o.checkout_id = ?
+                        LIMIT 1
+                    ");
+                    $stmt_lanc->execute([$checkout_id]);
+                    $order_lanc = $stmt_lanc->fetch(PDO::FETCH_ASSOC);
+                    if ($order_lanc) {
+                        $res_lanc = LancamentoBancarioHelper::lancarPedido($conn, $order_lanc, 0);
+                        file_put_contents($log_file,
+                            date('Y-m-d H:i:s') . " - Lancamento bancario pedido #{$order_lanc['id']}: " . $res_lanc['message'] . "\n",
+                            FILE_APPEND
+                        );
+                    }
+                } catch (Exception $e_lanc) {
+                    file_put_contents($log_file,
+                        date('Y-m-d H:i:s') . " - ERRO lancamento bancario: " . $e_lanc->getMessage() . "\n",
+                        FILE_APPEND
+                    );
+                }
+            }
+
             // Enviar notificação Telegram se pagamento aprovado
             if (in_array($status, ['PAID', 'SUCCESSFUL', 'APPROVED'])) {
                 try {

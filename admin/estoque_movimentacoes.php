@@ -179,39 +179,42 @@ require_once '../includes/header.php';
     <!-- Filtros -->
     <div class="card mb-3">
         <div class="card-body">
-            <form method="GET" class="row g-3">
-                <div class="col-md-3">
-                    <label class="form-label">Produto</label>
-                    <select name="produto_id" class="form-select">
-                        <option value="">Todos os produtos</option>
-                        <?php foreach ($produtos as $p): ?>
-                        <option value="<?= $p['id'] ?>" <?= ($_GET['produto_id'] ?? '') == $p['id'] ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($p['nome']) ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Tipo</label>
-                    <select name="tipo" class="form-select">
-                        <option value="">Todos os tipos</option>
-                        <option value="entrada" <?= ($_GET['tipo'] ?? '') == 'entrada' ? 'selected' : '' ?>>Entrada</option>
-                        <option value="saida" <?= ($_GET['tipo'] ?? '') == 'saida' ? 'selected' : '' ?>>Saída</option>
-                        <option value="ajuste" <?= ($_GET['tipo'] ?? '') == 'ajuste' ? 'selected' : '' ?>>Ajuste</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Data Início</label>
-                    <input type="date" name="data_inicio" class="form-control" value="<?= htmlspecialchars($_GET['data_inicio'] ?? '') ?>">
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Data Fim</label>
-                    <input type="date" name="data_fim" class="form-control" value="<?= htmlspecialchars($_GET['data_fim'] ?? '') ?>">
-                </div>
-                <div class="col-md-3 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="fas fa-filter"></i> Filtrar
-                    </button>
+            <form method="GET" id="formFiltros">
+                <div class="filter-grid">
+                    <div class="filter-item filter-item-wide">
+                        <label class="filter-label">Produto</label>
+                        <select name="produto_id" class="form-control">
+                            <option value="">Todos os produtos</option>
+                            <?php foreach ($produtos as $p): ?>
+                            <option value="<?= $p['id'] ?>" <?= ($_GET['produto_id'] ?? '') == $p['id'] ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($p['nome']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">Tipo</label>
+                        <select name="tipo" class="form-control">
+                            <option value="">Todos os tipos</option>
+                            <option value="entrada" <?= ($_GET['tipo'] ?? '') == 'entrada' ? 'selected' : '' ?>>Entrada</option>
+                            <option value="saida"   <?= ($_GET['tipo'] ?? '') == 'saida'   ? 'selected' : '' ?>>Saída</option>
+                            <option value="ajuste"  <?= ($_GET['tipo'] ?? '') == 'ajuste'  ? 'selected' : '' ?>>Ajuste</option>
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">Data Início</label>
+                        <input type="date" name="data_inicio" class="form-control" value="<?= htmlspecialchars($_GET['data_inicio'] ?? '') ?>">
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label">Data Fim</label>
+                        <input type="date" name="data_fim" class="form-control" value="<?= htmlspecialchars($_GET['data_fim'] ?? '') ?>">
+                    </div>
+                    <div class="filter-item filter-item-btn">
+                        <label class="filter-label">&nbsp;</label>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-filter"></i> Filtrar
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>

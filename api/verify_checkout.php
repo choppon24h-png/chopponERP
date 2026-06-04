@@ -57,6 +57,9 @@ require_once '../includes/jwt.php';
 require_once '../includes/logger.php';
 require_once '../includes/sumup.php';
 require_once '../includes/PaymentConfigManager.php';
+if (!class_exists('LancamentoBancarioHelper')) {
+    require_once '../includes/LancamentoBancarioHelper.php';
+}
 
 // ── Autenticação JWT ──────────────────────────────────────────────────────────
 $headers = getallheaders();
@@ -185,6 +188,32 @@ try {
                 'checkout_id' => $checkout_id,
                 'status_api'  => $status_api,
             ]);
+
+            // ── Lançamento automático na conta bancária (evento PAID via polling) ──
+            try {
+                $stmt_lanc = $conn->prepare("
+                    SELECT o.*, b.name AS bebida_nome
+                    FROM `order` o
+                    LEFT JOIN bebidas b ON o.bebida_id = b.id
+                    WHERE o.checkout_id = ?
+                    LIMIT 1
+                ");
+                $stmt_lanc->execute([$checkout_id]);
+                $order_lanc = $stmt_lanc->fetch(PDO::FETCH_ASSOC);
+                if ($order_lanc) {
+                    $res_lanc = LancamentoBancarioHelper::lancarPedido($conn, $order_lanc, 0);
+                    Logger::info('verify_checkout - lancamento bancario', [
+                        'checkout_id' => $checkout_id,
+                        'result'      => $res_lanc['message'],
+                        'lancamento'  => $res_lanc['lancamento_id'],
+                    ]);
+                }
+            } catch (\Throwable $e_lanc) {
+                Logger::error('verify_checkout - ERRO lancamento bancario', [
+                    'checkout_id' => $checkout_id,
+                    'error'       => $e_lanc->getMessage(),
+                ]);
+            }
 
             http_response_code(200);
             ob_clean();

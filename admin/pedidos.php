@@ -47,6 +47,18 @@ $col_is_matriz = $has_is_matriz ? 'COALESCE(e.is_matriz,0)' : '0';
 $col_is_matriz_plain = $has_is_matriz ? 'COALESCE(is_matriz,0)' : '0';
 $order_is_matriz = $has_is_matriz ? 'is_matriz DESC,' : '';
 
+// ── Verificar se as colunas de lançamento bancário existem ───────────────────
+$has_lancamento_id = false;
+$has_taxa_aplicada = false;
+try {
+    $conn->query("SELECT lancamento_bancario_id FROM `order` LIMIT 1");
+    $has_lancamento_id = true;
+} catch (Exception $e) {}
+try {
+    $conn->query("SELECT taxa_aplicada FROM `order` LIMIT 1");
+    $has_taxa_aplicada = true;
+} catch (Exception $e) {}
+
 // ── Buscar lista de estabelecimentos para o filtro (admin) ────────────────────
 if (isAdminGeral()) {
     $estabs_lista = $conn->query("
@@ -106,6 +118,22 @@ if (!empty($metodo)) {
 
 $where_clause = implode(' AND ', $where);
 
+// JOIN com movimentacoes_bancarias e contas_bancarias para mostrar conta e valor líquido
+$join_lancamento = '';
+$col_mov = '';
+if ($has_lancamento_id) {
+    $join_lancamento = "
+        LEFT JOIN movimentacoes_bancarias mb ON mb.id = o.lancamento_bancario_id
+        LEFT JOIN contas_bancarias cb        ON cb.id = mb.conta_bancaria_id
+    ";
+    // Nota: a vírgula inicial separa de t.android_id
+    $col_mov = ",
+        mb.valor       AS lancamento_valor,
+        cb.nome        AS conta_nome,
+        cb.banco       AS conta_banco
+    ";
+}
+
 // ── Buscar pedidos ────────────────────────────────────────────────────────────
 $stmt = $conn->prepare("
     SELECT
@@ -114,10 +142,12 @@ $stmt = $conn->prepare("
         e.name                          AS estabelecimento_name,
         {$col_is_matriz}                AS estab_is_matriz,
         t.android_id
+        {$col_mov}
     FROM `order` o
     INNER JOIN bebidas b          ON o.bebida_id         = b.id
     INNER JOIN estabelecimentos e ON o.estabelecimento_id = e.id
     INNER JOIN tap t              ON o.tap_id            = t.id
+    {$join_lancamento}
     WHERE $where_clause
     ORDER BY o.created_at DESC
 ");
@@ -128,8 +158,8 @@ $pedidos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $stmt = $conn->prepare("
     SELECT
         COUNT(*)                                                              AS total_pedidos,
-        SUM(CASE WHEN o.checkout_status = 'SUCCESSFUL' THEN o.valor    ELSE 0 END) AS total_vendas,
-        SUM(CASE WHEN o.checkout_status = 'SUCCESSFUL' THEN o.quantidade ELSE 0 END) AS total_litros
+        SUM(CASE WHEN o.checkout_status IN ('SUCCESSFUL','PAID','APPROVED') THEN o.valor    ELSE 0 END) AS total_vendas,
+        SUM(CASE WHEN o.checkout_status IN ('SUCCESSFUL','PAID','APPROVED') THEN o.quantidade ELSE 0 END) AS total_litros
     FROM `order` o
     WHERE $where_clause
 ");
@@ -160,7 +190,9 @@ require_once '../includes/header.php';
                     <label class="form-label">Status</label>
                     <select name="status" class="form-control">
                         <option value="">Todos</option>
+                        <option value="PAID"       <?= $status === 'PAID'       ? 'selected' : '' ?>>Pago (PAID)</option>
                         <option value="SUCCESSFUL" <?= $status === 'SUCCESSFUL' ? 'selected' : '' ?>>Sucesso</option>
+                        <option value="APPROVED"   <?= $status === 'APPROVED'   ? 'selected' : '' ?>>Aprovado</option>
                         <option value="PENDING"    <?= $status === 'PENDING'    ? 'selected' : '' ?>>Pendente</option>
                         <option value="CANCELLED"  <?= $status === 'CANCELLED'  ? 'selected' : '' ?>>Cancelado</option>
                         <option value="FAILED"     <?= $status === 'FAILED'     ? 'selected' : '' ?>>Falhou</option>
@@ -211,7 +243,7 @@ require_once '../includes/header.php';
     </div>
     <div class="col-md-4">
         <div class="stats-card">
-            <p>Total em Vendas</p>
+            <p>Total em Vendas (pagos)</p>
             <h3><?= formatMoney($stats['total_vendas'] ?? 0) ?></h3>
         </div>
     </div>
@@ -237,18 +269,31 @@ require_once '../includes/header.php';
                         <th>Estabelecimento</th>
                         <th>Tipo</th>
                         <?php endif; ?>
-                        <th>Quantidade</th>
-                        <th>Valor</th>
+                        <th>Qtd</th>
+                        <th>Valor Bruto</th>
                         <th>Método</th>
-                        <th>Status Pagamento</th>
-                        <th>Status Liberação</th>
+                        <th>Status Pgto</th>
+                        <th>Status Lib.</th>
+                        <?php if ($has_lancamento_id): ?>
+                        <th title="Conta bancária onde o valor foi lançado">Conta Bancária</th>
+                        <th title="Valor líquido lançado (bruto - taxa)">Valor Líquido</th>
+                        <?php if ($has_taxa_aplicada): ?>
+                        <th title="Taxa descontada do valor bruto">Taxa</th>
+                        <?php endif; ?>
+                        <?php endif; ?>
                         <th>CPF</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($pedidos)): ?>
                     <tr>
-                        <td colspan="<?= (isAdminGeral() || count($estabs_lista) > 1) ? '11' : '9' ?>" class="text-center text-muted py-3">
+                        <?php
+                        $colspan = 9;
+                        if (isAdminGeral() || count($estabs_lista) > 1) $colspan += 2;
+                        if ($has_lancamento_id) $colspan += 2;
+                        if ($has_taxa_aplicada) $colspan += 1;
+                        ?>
+                        <td colspan="<?= $colspan ?>" class="text-center text-muted py-3">
                             Nenhum pedido encontrado para o período selecionado.
                         </td>
                     </tr>
@@ -262,6 +307,14 @@ require_once '../includes/header.php';
                             } else {
                                 $tipo_badge = '<span class="badge" style="background:#0ea5e9;color:#fff;font-size:0.75em;">Franqueado</span>';
                             }
+
+                            // Status do lançamento bancário
+                            $lancado = $has_lancamento_id && !empty($pedido['lancamento_bancario_id']);
+                            $valor_bruto = floatval($pedido['valor'] ?? 0);
+                            $taxa_val    = $has_taxa_aplicada ? floatval($pedido['taxa_aplicada'] ?? 0) : 0;
+                            $valor_liq   = $lancado && isset($pedido['lancamento_valor'])
+                                           ? floatval($pedido['lancamento_valor'])
+                                           : ($valor_bruto - $taxa_val);
                         ?>
                         <tr>
                             <td><?= $pedido['id'] ?></td>
@@ -284,6 +337,57 @@ require_once '../includes/header.php';
                                     <?= htmlspecialchars($pedido['status_liberacao']) ?>
                                 </span>
                             </td>
+                            <?php if ($has_lancamento_id): ?>
+                            <td>
+                                <?php if ($lancado): ?>
+                                    <?php
+                                    $conta_label = '';
+                                    if (!empty($pedido['conta_nome'])) {
+                                        $conta_label = htmlspecialchars($pedido['conta_nome']);
+                                        if (!empty($pedido['conta_banco'])) {
+                                            $conta_label .= '<br><small class="text-muted">' . htmlspecialchars($pedido['conta_banco']) . '</small>';
+                                        }
+                                    } else {
+                                        $conta_label = '<span class="text-muted">—</span>';
+                                    }
+                                    ?>
+                                    <span class="badge badge-success" title="Lançamento #<?= (int)$pedido['lancamento_bancario_id'] ?>">
+                                        ✓ Lançado
+                                    </span>
+                                    <br><?= $conta_label ?>
+                                <?php else: ?>
+                                    <?php
+                                    $status_pago = in_array(strtoupper($pedido['checkout_status'] ?? ''), ['PAID','SUCCESSFUL','APPROVED','COMPLETED']);
+                                    if ($status_pago): ?>
+                                        <span class="badge badge-warning" title="Pagamento aprovado mas lançamento pendente">
+                                            ⚠ Pendente
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="text-muted">—</span>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ($lancado): ?>
+                                    <strong><?= formatMoney($valor_liq) ?></strong>
+                                <?php elseif (in_array(strtoupper($pedido['checkout_status'] ?? ''), ['PAID','SUCCESSFUL','APPROVED','COMPLETED'])): ?>
+                                    <span class="text-muted"><?= formatMoney($valor_bruto) ?></span>
+                                <?php else: ?>
+                                    <span class="text-muted">—</span>
+                                <?php endif; ?>
+                            </td>
+                            <?php if ($has_taxa_aplicada): ?>
+                            <td>
+                                <?php if ($lancado && $taxa_val > 0): ?>
+                                    <span class="text-danger">- <?= formatMoney($taxa_val) ?></span>
+                                <?php elseif ($lancado): ?>
+                                    <span class="text-muted">R$ 0,00</span>
+                                <?php else: ?>
+                                    <span class="text-muted">—</span>
+                                <?php endif; ?>
+                            </td>
+                            <?php endif; ?>
+                            <?php endif; ?>
                             <td><?= htmlspecialchars($pedido['cpf'] ?? '') ?></td>
                         </tr>
                         <?php endforeach; ?>

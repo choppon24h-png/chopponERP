@@ -147,6 +147,7 @@ if ($action === 'iniciada') {
     // ── Lançamento automático na conta bancária ──────────────────────────────────────────
     $lancamento_id = null;
     if ($status_liberacao === 'FINISHED') {
+        // ── Lançamento bancário ──────────────────────────────────────────────
         try {
             require_once '../includes/LancamentoBancarioHelper.php';
             $stmt_reload = $conn->prepare("SELECT o.*, b.name AS bebida_nome FROM `order` o LEFT JOIN bebidas b ON o.bebida_id = b.id WHERE o.id = ? LIMIT 1");
@@ -164,7 +165,83 @@ if ($action === 'iniciada') {
         } catch (Exception $e_lanc) {
             file_put_contents(
                 __DIR__ . '/../logs/lancamento_bancario.log',
-                date('Y-m-d H:i:s') . " - ERRO Liberacao #{$order['id']}: " . $e_lanc->getMessage() . "\n",
+                date('Y-m-d H:i:s') . " - ERRO Lancamento #{$order['id']}: " . $e_lanc->getMessage() . "\n",
+                FILE_APPEND
+            );
+        }
+
+        // ── Cashback automático: creditar pontos ao cliente pelo CPF ─────────
+        try {
+            require_once '../includes/cashback_helper.php';
+
+            // Normalizar CPF do pedido (remover formatação)
+            $cpf_pedido = preg_replace('/[^0-9]/', '', $order['cpf'] ?? '');
+
+            if (strlen($cpf_pedido) === 11) {
+                $estab_id_pedido = intval($order['estabelecimento_id']);
+
+                // Buscar cliente pelo CPF normalizado no estabelecimento
+                $stmt_cli = $conn->prepare("
+                    SELECT id, nome, pontos_cashback
+                    FROM clientes
+                    WHERE REPLACE(REPLACE(REPLACE(cpf, '.', ''), '-', ''), ' ', '') = ?
+                      AND estabelecimento_id = ?
+                      AND status = 1
+                    LIMIT 1
+                ");
+                $stmt_cli->execute([$cpf_pedido, $estab_id_pedido]);
+                $cliente_row = $stmt_cli->fetch(PDO::FETCH_ASSOC);
+
+                if ($cliente_row) {
+                    // Verificar se já existe consumo registrado para este pedido
+                    $stmt_dup = $conn->prepare("SELECT id FROM clientes_consumo WHERE pedido_id = ? LIMIT 1");
+                    $stmt_dup->execute([$order['id']]);
+                    $consumo_existente = $stmt_dup->fetch();
+
+                    if (!$consumo_existente) {
+                        // Buscar dados da bebida (usa order_reload que tem JOIN com bebidas)
+                        $order_cb    = isset($order_reload) ? $order_reload : $order;
+                        $bebida_id   = intval($order_cb['bebida_id'] ?? 0);
+                        $bebida_nome = $order_cb['bebida_nome'] ?? $order_cb['descricao'] ?? 'Bebida';
+                        $valor_total = floatval($order_cb['valor'] ?? 0);
+                        // quantidade em litros
+                        $qtd_litros  = floatval($qtd_liberada) / 1000.0;
+                        $valor_unit  = ($qtd_litros > 0) ? ($valor_total / $qtd_litros) : $valor_total;
+
+                        $cashback = new CashbackHelper($conn, $estab_id_pedido);
+                        $res_cb = $cashback->registrarConsumo(
+                            $cliente_row['id'],
+                            $bebida_id,
+                            $bebida_nome,
+                            $qtd_litros,
+                            $valor_unit,
+                            date('Y-m-d H:i:s'),
+                            $order['id']
+                        );
+
+                        // Atualizar total_consumido do cliente
+                        $conn->prepare("UPDATE clientes SET total_consumido = total_consumido + ? WHERE id = ?")
+                             ->execute([$valor_total, $cliente_row['id']]);
+
+                        file_put_contents(
+                            __DIR__ . '/../logs/cashback.log',
+                            date('Y-m-d H:i:s') . " - Pedido #{$order['id']} | Cliente: {$cliente_row['nome']} | CPF: {$cpf_pedido} | Cashback: R$ " . number_format($res_cb['cashback'] ?? 0, 2) . " | " . ($res_cb['regra_nome'] ?? '') . "\n",
+                            FILE_APPEND
+                        );
+                    }
+                } else {
+                    // Cliente não cadastrado — registrar para auditoria
+                    file_put_contents(
+                        __DIR__ . '/../logs/cashback.log',
+                        date('Y-m-d H:i:s') . " - Pedido #{$order['id']} | CPF {$cpf_pedido} não encontrado no estab {$estab_id_pedido}\n",
+                        FILE_APPEND
+                    );
+                }
+            }
+        } catch (Exception $e_cb) {
+            file_put_contents(
+                __DIR__ . '/../logs/cashback.log',
+                date('Y-m-d H:i:s') . " - ERRO Cashback #{$order['id']}: " . $e_cb->getMessage() . "\n",
                 FILE_APPEND
             );
         }

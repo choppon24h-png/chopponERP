@@ -136,14 +136,21 @@ if (!isAdminGeral()) {
 }
 
 $stmt = $conn->prepare("
-    SELECT 
+    SELECT
         c.*,
         e.name as estabelecimento_name,
         COUNT(DISTINCT cc.id) as total_consumos,
-        COALESCE(SUM(cc.valor_total), 0) as total_gasto
+        COALESCE(SUM(cc.valor_total), 0) as total_gasto,
+        COUNT(DISTINCT o.id) as total_pedidos_order,
+        COALESCE(SUM(CASE WHEN o.checkout_status IN ('SUCCESSFUL','PAID','APPROVED') THEN o.valor ELSE 0 END), 0) as total_vendas_order
     FROM clientes c
     LEFT JOIN estabelecimentos e ON c.estabelecimento_id = e.id
     LEFT JOIN clientes_consumo cc ON c.id = cc.cliente_id
+    LEFT JOIN \`order\` o
+        ON REPLACE(REPLACE(REPLACE(c.cpf, '.', ''), '-', ''), ' ', '') =
+           REPLACE(REPLACE(REPLACE(o.cpf, '.', ''), '-', ''), ' ', '')
+        AND o.estabelecimento_id = c.estabelecimento_id
+        AND o.status_liberacao = 'FINISHED'
     $estabelecimento_filter
     GROUP BY c.id
     ORDER BY c.created_at DESC
@@ -210,7 +217,16 @@ require_once '../includes/header.php';
             <i class="fas fa-chart-line"></i>
         </div>
         <div class="stat-info">
-            <h3><?php echo formatMoney(array_sum(array_column($clientes, 'total_consumido'))); ?></h3>
+            <?php
+                $total_consumido_geral = 0;
+                foreach ($clientes as $cli) {
+                    $tc = floatval($cli['total_consumido']) > 0
+                        ? floatval($cli['total_consumido'])
+                        : floatval($cli['total_vendas_order']);
+                    $total_consumido_geral += $tc;
+                }
+            ?>
+            <h3><?php echo formatMoney($total_consumido_geral); ?></h3>
             <p>Total Consumido</p>
         </div>
     </div>
@@ -277,8 +293,18 @@ require_once '../includes/header.php';
                             <i class="fas fa-coins"></i> <?php echo formatMoney($cliente['pontos_cashback']); ?>
                         </span>
                     </td>
-                    <td><?php echo formatMoney($cliente['total_consumido']); ?></td>
-                    <td><?php echo $cliente['total_consumos']; ?></td>
+                    <?php
+                        // Usar total da tabela order se total_consumido do cliente for 0
+                        $total_exibir   = floatval($cliente['total_consumido']) > 0
+                            ? floatval($cliente['total_consumido'])
+                            : floatval($cliente['total_vendas_order']);
+                        $consumos_exibir = intval($cliente['total_consumos']) > 0
+                            ? intval($cliente['total_consumos'])
+                            : intval($cliente['total_pedidos_order']);
+                        $fonte = floatval($cliente['total_consumido']) > 0 ? '' : ' <small style="color:#999;font-size:10px;">(pedidos)</small>';
+                    ?>
+                    <td><?php echo formatMoney($total_exibir); ?><?php echo $fonte; ?></td>
+                    <td><?php echo $consumos_exibir; ?></td>
                     <?php if (isAdminGeral()): ?>
                     <td><?php echo htmlspecialchars($cliente['estabelecimento_name']); ?></td>
                     <?php endif; ?>

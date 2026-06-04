@@ -146,7 +146,7 @@ $stmt = $conn->prepare("
     FROM clientes c
     LEFT JOIN estabelecimentos e ON c.estabelecimento_id = e.id
     LEFT JOIN clientes_consumo cc ON c.id = cc.cliente_id
-    LEFT JOIN \`order\` o
+    LEFT JOIN `order` o
         ON REPLACE(REPLACE(REPLACE(c.cpf, '.', ''), '-', ''), ' ', '') =
            REPLACE(REPLACE(REPLACE(o.cpf, '.', ''), '-', ''), ' ', '')
         AND o.estabelecimento_id = c.estabelecimento_id

@@ -9,11 +9,14 @@ $ano_atual    = date('Y');
 $ano_anterior = $ano_atual - 1;
 $mes_atual    = date('n');
 
-// ─── Helper: cláusula WHERE multi-tenant ─────────────────────
+// ─── Helper: cláusula WHERE multi-tenant ─────────────
 $eid = isAdminGeral() ? null : getEstabelecimentoId();
 function eid_where(string $alias = 'o'): string {
     global $eid;
-    return $eid ? " AND {$alias}.estabelecimento_id = {$eid}" : '';
+    if (!$eid) return '';
+    // Quando alias é vazio, usa o campo sem prefixo; caso contrário usa alias.campo
+    $campo = $alias !== '' ? "{$alias}.estabelecimento_id" : 'estabelecimento_id';
+    return " AND {$campo} = {$eid}";
 }
 function eid_param(): array {
     global $eid;
@@ -30,7 +33,7 @@ $stmt = $conn->prepare("
         COUNT(*)                     AS total_pedidos
     FROM `order`
     WHERE checkout_status = 'SUCCESSFUL'
-    AND YEAR(created_at) = ?" . eid_where());
+    AND YEAR(created_at) = ?" . eid_where(''));
 $stmt->execute(array_merge([$ano_atual], eid_param()));
 $stats = $stmt->fetch();
 
@@ -41,7 +44,7 @@ $stmt = $conn->prepare("
     FROM `order`
     WHERE checkout_status = 'SUCCESSFUL'
     AND YEAR(created_at) = ?
-    AND MONTH(created_at) = ?" . eid_where());
+    AND MONTH(created_at) = ?" . eid_where(''));
 $stmt->execute(array_merge([$ano_atual, $mes_atual], eid_param()));
 $stats_mensal = $stmt->fetch();
 
@@ -67,7 +70,7 @@ for ($m = 1; $m <= 12; $m++) {
         SELECT COALESCE(SUM(valor), 0) AS total
         FROM `order`
         WHERE checkout_status = 'SUCCESSFUL'
-        AND YEAR(created_at) = ? AND MONTH(created_at) = ?" . eid_where());
+        AND YEAR(created_at) = ? AND MONTH(created_at) = ?" . eid_where(''));
     $stmt->execute(array_merge([$ano_atual, $m], eid_param()));
     $vendas_por_mes['atual'][$m] = (float)$stmt->fetchColumn();
 
@@ -81,7 +84,7 @@ $stmt = $conn->prepare("
     SELECT DATE(created_at) AS dia, COALESCE(SUM(valor), 0) AS total
     FROM `order`
     WHERE checkout_status = 'SUCCESSFUL'
-    AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)" . eid_where() . "
+    AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)" . eid_where('') . "
     GROUP BY DATE(created_at)
     ORDER BY dia ASC");
 $stmt->execute(eid_param());

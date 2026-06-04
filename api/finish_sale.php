@@ -197,6 +197,35 @@ try {
     exit;
 }
 
+// ── Lançamento automático na conta bancária ──────────────────────────────────────────
+// Somente quando o pedido foi totalmente finalizado (FINISHED)
+$lancamento_id = null;
+if ($status_liberacao === 'FINISHED') {
+    try {
+        require_once '../includes/LancamentoBancarioHelper.php';
+        // Recarregar pedido com dados atualizados
+        $stmt_reload = $conn->prepare("SELECT o.*, b.name AS bebida_nome FROM `order` o LEFT JOIN bebidas b ON o.bebida_id = b.id WHERE o.id = ? LIMIT 1");
+        $stmt_reload->execute([$order['id']]);
+        $order_reload = $stmt_reload->fetch(PDO::FETCH_ASSOC);
+        if ($order_reload) {
+            $resultado_lancamento = LancamentoBancarioHelper::lancarPedido($conn, $order_reload, 0);
+            $lancamento_id = $resultado_lancamento['lancamento_id'];
+            file_put_contents(
+                __DIR__ . '/../logs/lancamento_bancario.log',
+                date('Y-m-d H:i:s') . " - Pedido #{$order['id']} | " . $resultado_lancamento['message'] . "\n",
+                FILE_APPEND
+            );
+        }
+    } catch (Exception $e_lanc) {
+        // Não bloquear a resposta por erro no lançamento bancário
+        file_put_contents(
+            __DIR__ . '/../logs/lancamento_bancario.log',
+            date('Y-m-d H:i:s') . " - ERRO Pedido #{$order['id']}: " . $e_lanc->getMessage() . "\n",
+            FILE_APPEND
+        );
+    }
+}
+
 ob_clean();
 echo json_encode([
     'success'             => true,
@@ -206,4 +235,5 @@ echo json_encode([
     'total_pulsos'        => $total_pulsos,
     'tap_volume_consumido'=> $tap_consumido,
     'tap_volume_atual'    => $tap_atual,
+    'lancamento_bancario' => $lancamento_id,
 ]);

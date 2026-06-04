@@ -144,6 +144,32 @@ if ($action === 'iniciada') {
         exit;
     }
 
+    // ── Lançamento automático na conta bancária ──────────────────────────────────────────
+    $lancamento_id = null;
+    if ($status_liberacao === 'FINISHED') {
+        try {
+            require_once '../includes/LancamentoBancarioHelper.php';
+            $stmt_reload = $conn->prepare("SELECT o.*, b.name AS bebida_nome FROM `order` o LEFT JOIN bebidas b ON o.bebida_id = b.id WHERE o.id = ? LIMIT 1");
+            $stmt_reload->execute([$order['id']]);
+            $order_reload = $stmt_reload->fetch(PDO::FETCH_ASSOC);
+            if ($order_reload) {
+                $res_lanc = LancamentoBancarioHelper::lancarPedido($conn, $order_reload, 0);
+                $lancamento_id = $res_lanc['lancamento_id'];
+                file_put_contents(
+                    __DIR__ . '/../logs/lancamento_bancario.log',
+                    date('Y-m-d H:i:s') . " - Liberacao Pedido #{$order['id']} | " . $res_lanc['message'] . "\n",
+                    FILE_APPEND
+                );
+            }
+        } catch (Exception $e_lanc) {
+            file_put_contents(
+                __DIR__ . '/../logs/lancamento_bancario.log',
+                date('Y-m-d H:i:s') . " - ERRO Liberacao #{$order['id']}: " . $e_lanc->getMessage() . "\n",
+                FILE_APPEND
+            );
+        }
+    }
+
     http_response_code(200);
     ob_clean();
     echo json_encode([
@@ -153,6 +179,7 @@ if ($action === 'iniciada') {
         'total_pulsos'        => $total_pulsos,
         'tap_volume_consumido'=> $tap_consumido,
         'tap_volume_atual'    => $tap_atual,
+        'lancamento_bancario' => $lancamento_id,
     ]);
 
 } else {

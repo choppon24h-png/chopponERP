@@ -123,6 +123,108 @@ foreach ($estabelecimentos as $e) {
     }
 }
 
+// ─── Verificar se colunas de formas_pagamento existem ────────
+$fp_has_conta  = false;
+$fp_has_metodos = false;
+$fp_has_nome   = false;
+try {
+    $conn->query("SELECT conta_bancaria_id FROM formas_pagamento LIMIT 1");
+    $fp_has_conta = true;
+} catch (Exception $e) {}
+try {
+    $conn->query("SELECT metodos_aceitos FROM formas_pagamento LIMIT 1");
+    $fp_has_metodos = true;
+} catch (Exception $e) {}
+try {
+    $conn->query("SELECT nome FROM formas_pagamento LIMIT 1");
+    $fp_has_nome = true;
+} catch (Exception $e) {}
+
+// ─── Verificar se tabela contas_bancarias existe ───────────────
+$has_contas_bancarias = false;
+try {
+    $conn->query("SELECT id FROM contas_bancarias LIMIT 1");
+    $has_contas_bancarias = true;
+} catch (Exception $e) {}
+
+// ─── Processar salvar forma de pagamento ──────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_forma_pagamento'])) {
+    $fp_estab_id = isAdminGeral() ? intval($_POST['fp_estabelecimento_id'] ?? $estab_selecionado_id) : intval(getEstabelecimentoId());
+    $fp_id       = intval($_POST['fp_id'] ?? 0);
+    $fp_nome     = trim($_POST['fp_nome'] ?? '');
+    $fp_tipo     = trim($_POST['fp_tipo'] ?? 'pix');
+    $fp_bandeira = trim($_POST['fp_bandeira'] ?? '');
+    $fp_taxa_pct = floatval(str_replace(',', '.', $_POST['fp_taxa_percentual'] ?? '0'));
+    $fp_taxa_fix = floatval(str_replace(',', '.', $_POST['fp_taxa_fixa'] ?? '0'));
+    $fp_conta_id = intval($_POST['fp_conta_bancaria_id'] ?? 0) ?: null;
+    $fp_metodos  = isset($_POST['fp_metodos']) && is_array($_POST['fp_metodos'])
+                    ? implode(',', array_map('trim', $_POST['fp_metodos']))
+                    : '';
+    $fp_ativo    = isset($_POST['fp_ativo']) ? 1 : 0;
+
+    if ($fp_estab_id && $fp_tipo) {
+        try {
+            if ($fp_id > 0) {
+                // UPDATE
+                $sets  = "tipo=?, bandeira=?, taxa_percentual=?, taxa_fixa=?, ativo=?";
+                $vals  = [$fp_tipo, $fp_bandeira, $fp_taxa_pct, $fp_taxa_fix, $fp_ativo];
+                if ($fp_has_nome)    { $sets .= ", nome=?";             $vals[] = $fp_nome; }
+                if ($fp_has_conta)   { $sets .= ", conta_bancaria_id=?"; $vals[] = $fp_conta_id; }
+                if ($fp_has_metodos) { $sets .= ", metodos_aceitos=?";   $vals[] = $fp_metodos; }
+                $vals[] = $fp_id;
+                $vals[] = $fp_estab_id;
+                $conn->prepare("UPDATE formas_pagamento SET $sets WHERE id=? AND estabelecimento_id=?")->execute($vals);
+            } else {
+                // INSERT
+                $cols = "estabelecimento_id, tipo, bandeira, taxa_percentual, taxa_fixa, ativo";
+                $phs  = "?, ?, ?, ?, ?, ?";
+                $vals = [$fp_estab_id, $fp_tipo, $fp_bandeira, $fp_taxa_pct, $fp_taxa_fix, $fp_ativo];
+                if ($fp_has_nome)    { $cols .= ", nome";             $phs .= ", ?"; $vals[] = $fp_nome; }
+                if ($fp_has_conta)   { $cols .= ", conta_bancaria_id"; $phs .= ", ?"; $vals[] = $fp_conta_id; }
+                if ($fp_has_metodos) { $cols .= ", metodos_aceitos";   $phs .= ", ?"; $vals[] = $fp_metodos; }
+                $conn->prepare("INSERT INTO formas_pagamento ($cols) VALUES ($phs)")->execute($vals);
+            }
+            $success = 'Forma de pagamento salva com sucesso!';
+        } catch (Exception $e) {
+            $error = 'Erro ao salvar forma de pagamento: ' . $e->getMessage();
+        }
+    }
+}
+
+// ─── Processar excluir forma de pagamento ─────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_forma_pagamento'])) {
+    $fp_del_id    = intval($_POST['fp_del_id'] ?? 0);
+    $fp_del_estab = isAdminGeral() ? intval($_POST['fp_del_estab'] ?? 0) : intval(getEstabelecimentoId());
+    if ($fp_del_id && $fp_del_estab) {
+        try {
+            $conn->prepare("DELETE FROM formas_pagamento WHERE id=? AND estabelecimento_id=?")->execute([$fp_del_id, $fp_del_estab]);
+            $success = 'Forma de pagamento excluída.';
+        } catch (Exception $e) {
+            $error = 'Erro ao excluir: ' . $e->getMessage();
+        }
+    }
+}
+
+// ─── Buscar formas de pagamento do estabelecimento selecionado ─
+$formas_pagamento_lista = [];
+if ($estab_selecionado_id) {
+    $fp_cols = "id, estabelecimento_id, tipo, bandeira, taxa_percentual, taxa_fixa, ativo";
+    if ($fp_has_nome)    $fp_cols .= ", nome";
+    if ($fp_has_conta)   $fp_cols .= ", conta_bancaria_id";
+    if ($fp_has_metodos) $fp_cols .= ", metodos_aceitos";
+    $stmt_fp = $conn->prepare("SELECT $fp_cols FROM formas_pagamento WHERE estabelecimento_id=? ORDER BY tipo, id");
+    $stmt_fp->execute([$estab_selecionado_id]);
+    $formas_pagamento_lista = $stmt_fp->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// ─── Buscar contas bancárias do estabelecimento selecionado ────
+$contas_bancarias_lista = [];
+if ($has_contas_bancarias && $estab_selecionado_id) {
+    $stmt_cb = $conn->prepare("SELECT id, nome, banco, tipo, saldo_atual FROM contas_bancarias WHERE estabelecimento_id=? AND ativa=1 ORDER BY nome");
+    $stmt_cb->execute([$estab_selecionado_id]);
+    $contas_bancarias_lista = $stmt_cb->fetchAll(PDO::FETCH_ASSOC);
+}
+
 // ─── Buscar leitoras cadastradas ─────────────────────────────
 if (isAdminGeral()) {
     $stmt_readers = $conn->query("
@@ -713,8 +815,10 @@ require_once '../includes/header.php';
     </div>
 </div>
 
+<?php require_once '_formas_pagamento_section.php'; ?>
+
 <script>
-// ─── Estado global ────────────────────────────────────────────
+// ─── Estado globall ────────────────────────────────────────────
 var readerIdParaExcluir  = '';
 var readerIdParaVincular = '';
 var dadosNovaLeitora     = null;
@@ -1148,6 +1252,42 @@ function escHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+// ─── Meios de Pagamento ───────────────────────────────────────
+function abrirModalForma(fp) {
+    var m = document.getElementById('modalForma');
+    if (!m) return;
+    document.getElementById('fp_id').value             = fp ? (fp.id || '') : '';
+    document.getElementById('fp_nome').value           = fp ? (fp.nome || '') : '';
+    document.getElementById('fp_tipo').value           = fp ? (fp.tipo || 'pix') : 'pix';
+    document.getElementById('fp_bandeira').value       = fp ? (fp.bandeira || '') : '';
+    document.getElementById('fp_taxa_percentual').value= fp ? (fp.taxa_percentual || '0') : '0';
+    document.getElementById('fp_taxa_fixa').value      = fp ? (fp.taxa_fixa || '0') : '0';
+    document.getElementById('fp_conta_bancaria_id').value = fp ? (fp.conta_bancaria_id || '') : '';
+    document.getElementById('fp_ativo').checked        = fp ? (fp.ativo == 1) : true;
+    // Marcar checkboxes de metodos
+    var metodos = fp && fp.metodos_aceitos ? fp.metodos_aceitos.split(',') : [];
+    ['pix','credit','debit','cash'].forEach(function(m2) {
+        var cb = document.getElementById('fp_metodo_' + m2);
+        if (cb) cb.checked = metodos.indexOf(m2) >= 0;
+    });
+    document.getElementById('modalFormaTitle').textContent = fp && fp.id ? 'Editar Meio de Pagamento' : 'Novo Meio de Pagamento';
+    m.style.display = 'flex';
+}
+function fecharModalForma() {
+    var m = document.getElementById('modalForma');
+    if (m) m.style.display = 'none';
+}
+function confirmarExcluirForma(id, estabId, nome) {
+    if (!confirm('Excluir a forma de pagamento "' + nome + '"?')) return;
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.innerHTML = '<input name="delete_forma_pagamento" value="1">' +
+        '<input name="fp_del_id" value="' + id + '">' +
+        '<input name="fp_del_estab" value="' + estabId + '">';
+    document.body.appendChild(form);
+    form.submit();
 }
 </script>
 

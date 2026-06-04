@@ -36,20 +36,31 @@ $status             = $_GET['status']              ?? '';
 $metodo             = $_GET['metodo']              ?? '';
 $filtro_estab_id    = (int)($_GET['estabelecimento_id'] ?? 0);
 
+// ── Verificar se a coluna is_matriz existe no banco ──────────────────────────
+try {
+    $check = $conn->query("SELECT is_matriz FROM estabelecimentos LIMIT 1");
+    $has_is_matriz = true;
+} catch (Exception $e) {
+    $has_is_matriz = false;
+}
+$col_is_matriz = $has_is_matriz ? 'COALESCE(e.is_matriz,0)' : '0';
+$col_is_matriz_plain = $has_is_matriz ? 'COALESCE(is_matriz,0)' : '0';
+$order_is_matriz = $has_is_matriz ? 'is_matriz DESC,' : '';
+
 // ── Buscar lista de estabelecimentos para o filtro (admin) ────────────────────
 if (isAdminGeral()) {
     $estabs_lista = $conn->query("
-        SELECT id, name, COALESCE(is_matriz,0) as is_matriz
+        SELECT id, name, {$col_is_matriz_plain} as is_matriz
         FROM estabelecimentos
         WHERE status = 1
-        ORDER BY is_matriz DESC, name ASC
+        ORDER BY {$order_is_matriz} name ASC
     ")->fetchAll(PDO::FETCH_ASSOC);
 } else {
     // Franqueado: lista apenas os estabelecimentos liberados para ele
     if (!empty($ids_liberados)) {
         $in_ph = implode(',', array_fill(0, count($ids_liberados), '?'));
         $stmt_el = $conn->prepare("
-            SELECT id, name, COALESCE(is_matriz,0) as is_matriz
+            SELECT id, name, {$col_is_matriz_plain} as is_matriz
             FROM estabelecimentos
             WHERE id IN ($in_ph) AND status = 1
             ORDER BY name ASC
@@ -101,12 +112,12 @@ $stmt = $conn->prepare("
         o.*,
         b.name                          AS bebida_name,
         e.name                          AS estabelecimento_name,
-        COALESCE(e.is_matriz, 0)        AS estab_is_matriz,
+        {$col_is_matriz}                AS estab_is_matriz,
         t.android_id
     FROM `order` o
-    INNER JOIN bebidas b         ON o.bebida_id        = b.id
+    INNER JOIN bebidas b          ON o.bebida_id         = b.id
     INNER JOIN estabelecimentos e ON o.estabelecimento_id = e.id
-    INNER JOIN tap t             ON o.tap_id           = t.id
+    INNER JOIN tap t              ON o.tap_id            = t.id
     WHERE $where_clause
     ORDER BY o.created_at DESC
 ");

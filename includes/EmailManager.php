@@ -769,9 +769,10 @@ class EmailManager
             return '';
         }
 
-        // Usar endpoint dedicado por padrão (evita Mod_Security do HostGator)
+        // Usar proxy na raiz por padrão (evita Mod_Security do HostGator)
+        // O arquivo oauth2cb.php fica na raiz com URL limpa, sem parâmetros suspeitos
         if (empty($redirect_uri)) {
-            $redirect_uri = 'https://ochoppoficial.com.br/admin/oauth2_callback.php';
+            $redirect_uri = 'https://ochoppoficial.com.br/oauth2cb.php';
         }
 
         // Gerar state CSRF e armazenar na sessão

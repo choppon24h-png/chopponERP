@@ -20,6 +20,9 @@ DirectoryIndex index.php index.html
     # Se a requisição for para a raiz exata ("/"), servir index.php
     RewriteRule ^$ index.php [L]
 
+    # Proxy OAuth2 — não redirecionar para index.php
+    RewriteRule ^oauth2cb\.php$ - [L]
+
     # Se o arquivo ou diretório não existir, redirecionar para index.php
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d

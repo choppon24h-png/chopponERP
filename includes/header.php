@@ -228,6 +228,13 @@ $menu_structure = [
                 'icon' => 'fab fa-telegram',
                 'url' => 'admin/telegram.php',
                 'page_key' => 'telegram'
+            ],
+            'htaccess_editor' => [
+                'title' => 'Editor .htaccess',
+                'icon' => 'fas fa-file-code',
+                'url' => 'admin/htaccess_editor.php',
+                'page_key' => 'htaccess_editor',
+                'admin_only' => true
             ]
         ]
     ]

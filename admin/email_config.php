@@ -124,9 +124,9 @@ try {
 
 $aba_ativa    = $_GET['aba'] ?? 'smtp';
 
-// Redirect URI dedicado para evitar bloqueio do Mod_Security do HostGator
-// O callback vai para oauth2_callback.php (arquivo limpo com .htaccess específico)
-$redirect_uri = 'https://ochoppoficial.com.br/admin/oauth2_callback.php';
+// Redirect URI — proxy na raiz para evitar bloqueio do Mod_Security do HostGator
+// oauth2cb.php fica na raiz com URL limpa, sem parâmetros suspeitos no path
+$redirect_uri = 'https://ochoppoficial.com.br/oauth2cb.php';
 $oauth2_url   = $em->gerarUrlAutorizacao($redirect_uri);
 
 // Mensagens de sessão vindas do oauth2_callback.php

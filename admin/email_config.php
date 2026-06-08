@@ -88,6 +88,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ── Carregar dados ────────────────────────────────────────────────────────────
+// Carregar config por modo específico para os formulários de edição
+$smtp_config_smtp   = $em->carregarConfigPorModo('smtp_password') ?? [];
+$smtp_config_oauth  = $em->carregarConfigPorModo('gmail_oauth2')  ?? [];
+// Config ativa (prioridade OAuth2 com token > OAuth2 sem token > SMTP)
 try {
     $smtp_config = $em->carregarConfig();
 } catch (\RuntimeException $e) {
@@ -120,6 +124,7 @@ try {
 
 $aba_ativa    = $_GET['aba'] ?? 'smtp';
 $redirect_uri = (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . '/admin/email_config.php?aba=oauth2';
+$oauth2_url   = $em->gerarUrlAutorizacao($redirect_uri);
 
 // Processar callback OAuth2 via GET
 if ($aba_ativa === 'oauth2' && !empty($_GET['code'])) {
@@ -263,34 +268,34 @@ require_once '../includes/header.php';
         <div class="form-row">
             <div class="form-group">
                 <label>Host SMTP *</label>
-                <input type="text" name="smtp_host" value="<?= htmlspecialchars($smtp_config['smtp_host'] ?? 'smtp.gmail.com') ?>" placeholder="smtp.gmail.com" required>
+                <input type="text" name="smtp_host" value="<?= htmlspecialchars($smtp_config_smtp['smtp_host'] ?? 'smtp.gmail.com') ?>" placeholder="smtp.gmail.com" required>
                 <small>Gmail: smtp.gmail.com | Outlook: smtp.office365.com</small>
             </div>
             <div class="form-group">
                 <label>Porta *</label>
                 <select name="smtp_port">
-                    <option value="587" <?= ($smtp_config['smtp_port'] ?? 587) == 587 ? 'selected' : '' ?>>587 — TLS (recomendado)</option>
-                    <option value="465" <?= ($smtp_config['smtp_port'] ?? '') == 465 ? 'selected' : '' ?>>465 — SSL</option>
-                    <option value="25"  <?= ($smtp_config['smtp_port'] ?? '') == 25  ? 'selected' : '' ?>>25 — Sem criptografia</option>
+                    <option value="587" <?= ($smtp_config_smtp['smtp_port'] ?? 587) == 587 ? 'selected' : '' ?>>587 — TLS (recomendado)</option>
+                    <option value="465" <?= ($smtp_config_smtp['smtp_port'] ?? '') == 465 ? 'selected' : '' ?>>465 — SSL</option>
+                    <option value="25"  <?= ($smtp_config_smtp['smtp_port'] ?? '') == 25  ? 'selected' : '' ?>>25 — Sem criptografia</option>
                 </select>
             </div>
             <div class="form-group">
                 <label>Criptografia</label>
                 <select name="smtp_secure">
-                    <option value="tls"  <?= ($smtp_config['smtp_secure'] ?? 'tls') === 'tls'  ? 'selected' : '' ?>>TLS (STARTTLS)</option>
-                    <option value="ssl"  <?= ($smtp_config['smtp_secure'] ?? '') === 'ssl'  ? 'selected' : '' ?>>SSL</option>
-                    <option value="none" <?= ($smtp_config['smtp_secure'] ?? '') === 'none' ? 'selected' : '' ?>>Nenhuma</option>
+                    <option value="tls"  <?= ($smtp_config_smtp['smtp_secure'] ?? 'tls') === 'tls'  ? 'selected' : '' ?>>TLS (STARTTLS)</option>
+                    <option value="ssl"  <?= ($smtp_config_smtp['smtp_secure'] ?? '') === 'ssl'  ? 'selected' : '' ?>>SSL</option>
+                    <option value="none" <?= ($smtp_config_smtp['smtp_secure'] ?? '') === 'none' ? 'selected' : '' ?>>Nenhuma</option>
                 </select>
             </div>
         </div>
         <div class="form-row">
             <div class="form-group">
                 <label>Usuário SMTP (e-mail) *</label>
-                <input type="email" name="smtp_username" value="<?= htmlspecialchars($smtp_config['smtp_username'] ?? '') ?>" placeholder="seuemail@gmail.com" required>
+                <input type="email" name="smtp_username" value="<?= htmlspecialchars($smtp_config_smtp['smtp_username'] ?? '') ?>" placeholder="seuemail@gmail.com" required>
             </div>
             <div class="form-group">
                 <label>Senha SMTP / App Password</label>
-                <input type="password" name="smtp_password" placeholder="<?= !empty($smtp_config['smtp_password']) ? '●●●●●● (deixe em branco para manter)' : 'App Password do Gmail' ?>">
+                <input type="password" name="smtp_password" placeholder="<?= !empty($smtp_config_smtp['smtp_password']) ? '●●●●●● (deixe em branco para manter)' : 'App Password do Gmail' ?>">
                 <small>Para Gmail: gere uma <strong>Senha de App</strong> em <a href="https://myaccount.google.com/apppasswords" target="_blank">myaccount.google.com/apppasswords</a></small>
             </div>
         </div>
@@ -301,11 +306,11 @@ require_once '../includes/header.php';
         <div class="form-row">
             <div class="form-group">
                 <label>Nome do Remetente *</label>
-                <input type="text" name="from_name" value="<?= htmlspecialchars($smtp_config['from_name'] ?? 'Chopp ON') ?>" required>
+                <input type="text" name="from_name" value="<?= htmlspecialchars($smtp_config_smtp['from_name'] ?? 'Chopp ON') ?>" required>
             </div>
             <div class="form-group">
                 <label>E-mail do Remetente *</label>
-                <input type="email" name="from_email" value="<?= htmlspecialchars($smtp_config['from_email'] ?? '') ?>" required>
+                <input type="email" name="from_email" value="<?= htmlspecialchars($smtp_config_smtp['from_email'] ?? '') ?>" required>
             </div>
         </div>
     </div>
@@ -331,10 +336,10 @@ require_once '../includes/header.php';
     </p>
 
     <div style="margin-bottom:20px;">
-        <?php if (!empty($smtp_config['oauth_refresh_token'])): ?>
+        <?php if (!empty($smtp_config_oauth['oauth_refresh_token'])): ?>
             <span class="status-badge-ok"><i class="fas fa-check-circle"></i> Gmail OAuth2 configurado e ativo</span>
-            <span style="font-size:12px;color:#6b7280;margin-left:10px;">Conta: <?= htmlspecialchars($smtp_config['oauth_email'] ?? '—') ?></span>
-        <?php elseif (!empty($smtp_config['oauth_client_id'])): ?>
+            <span style="font-size:12px;color:#6b7280;margin-left:10px;">Conta: <?= htmlspecialchars($smtp_config_oauth['oauth_email'] ?? '—') ?></span>
+        <?php elseif (!empty($smtp_config_oauth['oauth_client_id'])): ?>
             <span class="status-badge-warn"><i class="fas fa-exclamation-triangle"></i> Credenciais salvas — aguardando autorização</span>
         <?php else: ?>
             <span class="status-badge-err"><i class="fas fa-times-circle"></i> OAuth2 não configurado</span>
@@ -342,7 +347,7 @@ require_once '../includes/header.php';
     </div>
 
     <div class="oauth-step">
-        <div class="oauth-step-num <?= !empty($smtp_config['oauth_client_id']) ? 'done' : '' ?>">1</div>
+        <div class="oauth-step-num <?= !empty($smtp_config_oauth['oauth_client_id']) ? 'done' : '' ?>">1</div>
         <div class="oauth-step-content">
             <h5>Criar projeto no Google Cloud Console</h5>
             <p>Acesse <a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a>,
@@ -353,7 +358,7 @@ require_once '../includes/header.php';
     </div>
 
     <div class="oauth-step">
-        <div class="oauth-step-num <?= !empty($smtp_config['oauth_client_id']) ? 'done' : '' ?>">2</div>
+        <div class="oauth-step-num <?= !empty($smtp_config_oauth['oauth_client_id']) ? 'done' : '' ?>">2</div>
         <div class="oauth-step-content">
             <h5>Informar Client ID e Client Secret</h5>
         </div>
@@ -365,35 +370,38 @@ require_once '../includes/header.php';
         <div class="form-row">
             <div class="form-group">
                 <label>Client ID *</label>
-                <input type="text" name="oauth_client_id" value="<?= htmlspecialchars($smtp_config['oauth_client_id'] ?? '') ?>" placeholder="xxxxxxxx.apps.googleusercontent.com" required>
+                <input type="text" name="oauth_client_id" value="<?= htmlspecialchars($smtp_config_oauth['oauth_client_id'] ?? '') ?>" placeholder="xxxxxxxx.apps.googleusercontent.com" required>
+                <small>Formato: <code>XXXXXXXXXX.apps.googleusercontent.com</code></small>
             </div>
             <div class="form-group">
                 <label>Client Secret *</label>
-                <input type="password" name="oauth_client_secret" placeholder="<?= !empty($smtp_config['oauth_client_secret']) ? '●●●●●● (salvo)' : 'GOCSPX-...' ?>">
+                <input type="password" name="oauth_client_secret" placeholder="<?= !empty($smtp_config_oauth['oauth_client_secret']) ? '●●●●●● (salvo — deixe em branco para manter)' : 'GOCSPX-...' ?>">
             </div>
         </div>
         <div class="form-row">
             <div class="form-group">
                 <label>E-mail Gmail autorizado *</label>
-                <input type="email" name="oauth_email" value="<?= htmlspecialchars($smtp_config['oauth_email'] ?? '') ?>" placeholder="seuemail@gmail.com" required>
+                <input type="email" name="oauth_email" value="<?= htmlspecialchars($smtp_config_oauth['oauth_email'] ?? '') ?>" placeholder="seuemail@gmail.com" required>
+                <small>Deve ser a mesma conta Gmail que você vai autorizar no passo 3.</small>
             </div>
             <div class="form-group">
                 <label>Nome do Remetente</label>
-                <input type="text" name="from_name" value="<?= htmlspecialchars($smtp_config['from_name'] ?? 'Chopp ON') ?>">
+                <input type="text" name="from_name" value="<?= htmlspecialchars($smtp_config_oauth['from_name'] ?? 'Chopp ON') ?>">
             </div>
         </div>
         <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Salvar Credenciais</button>
     </form>
 
     <div class="oauth-step">
-        <div class="oauth-step-num <?= !empty($smtp_config['oauth_refresh_token']) ? 'done' : '' ?>">3</div>
+        <div class="oauth-step-num <?= !empty($smtp_config_oauth['oauth_refresh_token']) ? 'done' : '' ?>">3</div>
         <div class="oauth-step-content">
             <h5>Autorizar acesso ao Gmail</h5>
             <p>Clique no botão abaixo para ser redirecionado ao Google e autorizar o acesso. O token será salvo automaticamente.</p>
-            <?php if (!empty($smtp_config['oauth_client_id'])): ?>
-                <a href="<?= htmlspecialchars($em->gerarUrlAutorizacao($redirect_uri)) ?>" class="btn btn-danger" style="margin-top:10px;">
+            <?php if (!empty($smtp_config_oauth['oauth_client_id'])): ?>
+                <a href="<?= htmlspecialchars($oauth2_url) ?>" class="btn btn-danger" style="margin-top:10px;">
                     <i class="fab fa-google"></i> Autorizar Gmail
                 </a>
+                <small style="display:block;margin-top:8px;color:#6b7280;">Você será redirecionado para o Google. Após autorizar, o Refresh Token será salvo automaticamente.</small>
             <?php else: ?>
                 <button class="btn btn-secondary" disabled>Salve as credenciais primeiro</button>
             <?php endif; ?>
@@ -401,7 +409,7 @@ require_once '../includes/header.php';
     </div>
 
     <div class="oauth-step">
-        <div class="oauth-step-num <?= !empty($smtp_config['oauth_refresh_token']) ? 'done' : '' ?>">4</div>
+        <div class="oauth-step-num <?= !empty($smtp_config_oauth['oauth_refresh_token']) ? 'done' : '' ?>">4</div>
         <div class="oauth-step-content">
             <h5>Ou cole o código de autorização manualmente</h5>
             <p>Se o redirecionamento automático não funcionar, copie o valor do parâmetro <code>code=</code> da URL de retorno e cole abaixo.</p>

@@ -1,6 +1,6 @@
 <?php
 /**
- * EmailManager — ChopponERP v2.0
+ * EmailManager — ChopponERP v2.1
  *
  * Gerencia envio de e-mails com dois modos:
  *   1. SMTP tradicional com senha (App Password do Gmail ou qualquer SMTP)
@@ -41,6 +41,7 @@ class EmailManager
 
     /**
      * Carrega a configuração ativa do banco.
+     * Prioridade: gmail_oauth2 com refresh_token > gmail_oauth2 sem token > smtp_password
      * Lança Exception se não houver configuração ativa.
      */
     public function carregarConfig(): array
@@ -49,8 +50,40 @@ class EmailManager
             return $this->config;
         }
 
-        $stmt = $this->conn->query("SELECT * FROM smtp_config WHERE status = 1 LIMIT 1");
-        $cfg  = $stmt->fetch(\PDO::FETCH_ASSOC);
+        // Prioridade 1: OAuth2 com refresh token configurado
+        $stmt = $this->conn->query(
+            "SELECT * FROM smtp_config
+              WHERE status = 1
+                AND modo = 'gmail_oauth2'
+                AND oauth_refresh_token IS NOT NULL
+                AND oauth_refresh_token != ''
+              ORDER BY updated_at DESC
+              LIMIT 1"
+        );
+        $cfg = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        // Prioridade 2: qualquer registro ativo com modo gmail_oauth2
+        if (!$cfg) {
+            $stmt = $this->conn->query(
+                "SELECT * FROM smtp_config
+                  WHERE status = 1
+                    AND modo = 'gmail_oauth2'
+                  ORDER BY updated_at DESC
+                  LIMIT 1"
+            );
+            $cfg = $stmt->fetch(\PDO::FETCH_ASSOC);
+        }
+
+        // Prioridade 3: qualquer registro ativo
+        if (!$cfg) {
+            $stmt = $this->conn->query(
+                "SELECT * FROM smtp_config
+                  WHERE status = 1
+                  ORDER BY updated_at DESC
+                  LIMIT 1"
+            );
+            $cfg = $stmt->fetch(\PDO::FETCH_ASSOC);
+        }
 
         if (!$cfg) {
             throw new \RuntimeException('Nenhuma configuração de e-mail ativa encontrada. Configure em Configurações → E-mail.');
@@ -58,6 +91,18 @@ class EmailManager
 
         $this->config = $cfg;
         return $cfg;
+    }
+
+    /**
+     * Carrega configuração por modo específico (para o formulário de edição).
+     */
+    public function carregarConfigPorModo(string $modo): ?array
+    {
+        $stmt = $this->conn->prepare(
+            "SELECT * FROM smtp_config WHERE modo = ? ORDER BY updated_at DESC LIMIT 1"
+        );
+        $stmt->execute([$modo]);
+        return $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
     }
 
     /**
@@ -82,10 +127,7 @@ class EmailManager
         }
 
         // ── Passo 1: remover FK e UNIQUE KEY em estabelecimento_id ────────────
-        // A tabela antiga tinha FOREIGN KEY e UNIQUE KEY obrigatórios que
-        // impedem o INSERT sem estabelecimento_id e o MODIFY COLUMN para NULL.
         try {
-            // Buscar nome da FK
             $fks = $this->conn->query(
                 "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
                   WHERE TABLE_SCHEMA = DATABASE()
@@ -96,7 +138,6 @@ class EmailManager
             foreach ($fks as $fk) {
                 try { $this->conn->exec("ALTER TABLE `smtp_config` DROP FOREIGN KEY `$fk`"); } catch (\Throwable $e) {}
             }
-            // Remover UNIQUE KEY em estabelecimento_id
             $uks = $this->conn->query(
                 "SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
                   WHERE TABLE_SCHEMA = DATABASE()
@@ -108,7 +149,7 @@ class EmailManager
             foreach ($uks as $uk) {
                 try { $this->conn->exec("ALTER TABLE `smtp_config` DROP INDEX `$uk`"); } catch (\Throwable $e) {}
             }
-        } catch (\Throwable $e) { /* ignora se INFORMATION_SCHEMA não acessível */ }
+        } catch (\Throwable $e) {}
 
         // ── Passo 2: tornar estabelecimento_id nullable ───────────────────────
         try {
@@ -116,7 +157,7 @@ class EmailManager
                 "ALTER TABLE `smtp_config`
                  MODIFY COLUMN `estabelecimento_id` BIGINT UNSIGNED NULL DEFAULT NULL"
             );
-        } catch (\Throwable $e) { /* ignora se já for nullable */ }
+        } catch (\Throwable $e) {}
 
         // ── Passo 3: adicionar colunas faltantes ──────────────────────────────
         $necessarias = [
@@ -136,47 +177,57 @@ class EmailManager
             'from_name'           => "ADD COLUMN `from_name` VARCHAR(255) NOT NULL DEFAULT 'Chopp ON'",
         ];
 
-        // Recarregar colunas após possíveis ALTER TABLE acima
         try { $existentes = $this->colunasSmtpConfig(); } catch (\Throwable $e) { return; }
 
         foreach ($necessarias as $col => $ddl) {
             if (!in_array($col, $existentes, true)) {
                 try {
                     $this->conn->exec("ALTER TABLE `smtp_config` $ddl");
-                } catch (\Throwable $e) {
-                    // Ignora se já existir (race condition)
-                }
+                } catch (\Throwable $e) {}
             }
         }
 
         // ── Passo 4: garantir smtp_password aceita NULL ───────────────────────
         try {
             $this->conn->exec("ALTER TABLE `smtp_config` MODIFY COLUMN `smtp_password` TEXT NULL DEFAULT NULL");
-        } catch (\Throwable $e) { /* ignora */ }
+        } catch (\Throwable $e) {}
+
+        // ── Passo 5: garantir coluna updated_at existe ────────────────────────
+        try {
+            $existentes = $this->colunasSmtpConfig();
+            if (!in_array('updated_at', $existentes, true)) {
+                $this->conn->exec(
+                    "ALTER TABLE `smtp_config`
+                     ADD COLUMN `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+                );
+            }
+        } catch (\Throwable $e) {}
     }
 
     /**
      * Salva ou atualiza a configuração SMTP/OAuth2.
+     * Cada modo (smtp_password / gmail_oauth2) tem seu próprio registro.
      */
     public function salvarConfig(array $dados): void
     {
-        // Garantir que a estrutura da tabela está atualizada
         $this->garantirEstrutura();
 
-        $stmt = $this->conn->query("SELECT id FROM smtp_config LIMIT 1");
+        $modo = $dados['modo'] ?? 'smtp_password';
+
+        // Buscar registro existente do mesmo modo
+        $stmt = $this->conn->prepare("SELECT id FROM smtp_config WHERE modo = ? ORDER BY id ASC LIMIT 1");
+        $stmt->execute([$modo]);
         $existe = $stmt->fetch();
 
         // Obter colunas reais para evitar inserir campos inexistentes
         $colunasReais = $this->colunasSmtpConfig();
 
-        $modo = $dados['modo'] ?? 'smtp_password';
-
         $campos = [
             'modo'         => $modo,
-            'smtp_host'    => $dados['smtp_host']    ?? 'smtp.gmail.com',
-            'smtp_port'    => intval($dados['smtp_port'] ?? 587),
-            'smtp_secure'  => $dados['smtp_secure']  ?? 'tls',
-            'smtp_username'=> $dados['smtp_username'] ?? '',
+            'smtp_host'    => $dados['smtp_host']    ?? ($dados['host'] ?? 'smtp.gmail.com'),
+            'smtp_port'    => intval($dados['smtp_port'] ?? ($dados['port'] ?? 587)),
+            'smtp_secure'  => $dados['smtp_secure']  ?? ($dados['encryption'] ?? 'tls'),
+            'smtp_username'=> $dados['smtp_username'] ?? ($dados['username'] ?? ''),
             'from_name'    => $dados['from_name']    ?? 'Chopp ON',
             'status'       => 1,
         ];
@@ -189,25 +240,25 @@ class EmailManager
         $campos['from_email'] = $from_email;
 
         // Senha SMTP — só atualiza se preenchida
-        if (!empty($dados['smtp_password'])) {
-            $campos['smtp_password'] = base64_encode($dados['smtp_password']);
+        if (!empty($dados['smtp_password']) || !empty($dados['password'])) {
+            $pw = $dados['smtp_password'] ?? $dados['password'];
+            $campos['smtp_password'] = base64_encode($pw);
         }
 
-        // OAuth2
+        // OAuth2 — só atualiza campos preenchidos
         if (!empty($dados['oauth_client_id'])) {
-            $campos['oauth_client_id'] = $dados['oauth_client_id'];
+            $campos['oauth_client_id'] = trim($dados['oauth_client_id']);
         }
         if (!empty($dados['oauth_client_secret'])) {
-            $campos['oauth_client_secret'] = base64_encode($dados['oauth_client_secret']);
+            $campos['oauth_client_secret'] = base64_encode(trim($dados['oauth_client_secret']));
         }
         if (!empty($dados['oauth_refresh_token'])) {
-            $campos['oauth_refresh_token'] = base64_encode($dados['oauth_refresh_token']);
-            // Limpar access token ao trocar refresh token
-            $campos['oauth_access_token'] = null;
+            $campos['oauth_refresh_token'] = base64_encode(trim($dados['oauth_refresh_token']));
+            $campos['oauth_access_token']  = null;
             $campos['oauth_token_expiry']  = null;
         }
         if (!empty($dados['oauth_email'])) {
-            $campos['oauth_email'] = $dados['oauth_email'];
+            $campos['oauth_email'] = trim($dados['oauth_email']);
         }
 
         // Filtrar apenas colunas que existem na tabela
@@ -219,8 +270,8 @@ class EmailManager
             $values[] = $existe['id'];
             $this->conn->prepare("UPDATE smtp_config SET $sets WHERE id = ?")->execute($values);
         } else {
-            $cols   = implode(', ', array_map(fn($k) => "`$k`", array_keys($campos)));
-            $phs    = implode(', ', array_fill(0, count($campos), '?'));
+            $cols = implode(', ', array_map(fn($k) => "`$k`", array_keys($campos)));
+            $phs  = implode(', ', array_fill(0, count($campos), '?'));
             $this->conn->prepare("INSERT INTO smtp_config ($cols) VALUES ($phs)")->execute(array_values($campos));
         }
 
@@ -233,14 +284,6 @@ class EmailManager
 
     /**
      * Envia um e-mail e registra no log.
-     *
-     * @param string|array $destinatario  E-mail(s) do destinatário
-     * @param string       $assunto
-     * @param string       $corpo         HTML do e-mail
-     * @param string       $tipo          Constante TIPO_*
-     * @param int|null     $referencia_id ID do registro relacionado
-     * @param int|null     $estab_id      ID do estabelecimento
-     * @return array ['success' => bool, 'message' => string]
      */
     public function enviar(
         $destinatario,
@@ -265,7 +308,7 @@ class EmailManager
             if ($result['success']) {
                 $this->atualizarLog($log_id, 'enviado', null, $cfg['modo']);
             } else {
-                $this->atualizarLog($log_id, 'erro', $result['message'], $cfg['modo']);
+                $this->atualizarLog($log_id, 'erro', $result['message'], $cfg['modo'] ?? 'desconhecido');
             }
 
             return $result;
@@ -300,7 +343,6 @@ class EmailManager
 
     private function enviarViaSMTP(array $cfg, $destinatario, string $assunto, string $corpo): array
     {
-        // Tentar PHPMailer primeiro
         $phpmailer_paths = [
             __DIR__ . '/../vendor/phpmailer/phpmailer/src/PHPMailer.php',
             __DIR__ . '/../vendor/autoload.php',
@@ -323,7 +365,6 @@ class EmailManager
             return $this->enviarComPHPMailer($cfg, $destinatario, $assunto, $corpo);
         }
 
-        // Fallback: usar cURL direto para SMTP (sem PHPMailer)
         return $this->enviarComCurl($cfg, $destinatario, $assunto, $corpo);
     }
 
@@ -333,16 +374,17 @@ class EmailManager
             $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
             $mail->isSMTP();
             $mail->CharSet    = 'UTF-8';
-            $mail->Host       = $cfg['smtp_host'];
+            $mail->Host       = $cfg['smtp_host'] ?? $cfg['host'] ?? 'smtp.gmail.com';
             $mail->SMTPAuth   = true;
-            $mail->Username   = $cfg['smtp_username'];
-            $mail->Password   = base64_decode($cfg['smtp_password'] ?? '');
-            $mail->Port       = (int)$cfg['smtp_port'];
-            $mail->SMTPSecure = ($cfg['smtp_secure'] === 'ssl')
+            $mail->Username   = $cfg['smtp_username'] ?? $cfg['username'] ?? '';
+            $mail->Password   = base64_decode($cfg['smtp_password'] ?? $cfg['password'] ?? '');
+            $mail->Port       = (int)($cfg['smtp_port'] ?? $cfg['port'] ?? 587);
+            $enc = $cfg['smtp_secure'] ?? $cfg['encryption'] ?? 'tls';
+            $mail->SMTPSecure = ($enc === 'ssl')
                 ? \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS
                 : \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
 
-            $mail->setFrom($cfg['from_email'], $cfg['from_name']);
+            $mail->setFrom($cfg['from_email'], $cfg['from_name'] ?? 'Chopp ON');
             $mail->isHTML(true);
             $mail->Subject = $assunto;
             $mail->Body    = $corpo;
@@ -361,19 +403,15 @@ class EmailManager
         }
     }
 
-    /**
-     * Fallback sem PHPMailer: usa cURL para enviar via SMTP do Gmail.
-     * Funciona com App Password do Gmail.
-     */
     private function enviarComCurl(array $cfg, $destinatario, string $assunto, string $corpo): array
     {
         $dests = is_array($destinatario) ? $destinatario : [$destinatario];
         $from  = $cfg['from_email'];
-        $pass  = base64_decode($cfg['smtp_password'] ?? '');
-        $host  = $cfg['smtp_host'];
-        $port  = (int)$cfg['smtp_port'];
+        $pass  = base64_decode($cfg['smtp_password'] ?? $cfg['password'] ?? '');
+        $host  = $cfg['smtp_host'] ?? $cfg['host'] ?? 'smtp.gmail.com';
+        $port  = (int)($cfg['smtp_port'] ?? $cfg['port'] ?? 587);
+        $enc   = $cfg['smtp_secure'] ?? $cfg['encryption'] ?? 'tls';
 
-        // Montar mensagem RFC 2822
         $boundary = md5(uniqid());
         $headers  = "From: {$cfg['from_name']} <{$from}>\r\n";
         $headers .= "To: " . implode(', ', $dests) . "\r\n";
@@ -392,16 +430,15 @@ class EmailManager
 
         $message = $headers . "\r\n" . $body;
 
-        // Tentar via cURL SMTP
         $ch = curl_init();
-        $protocol = ($cfg['smtp_secure'] === 'ssl') ? 'smtps' : 'smtp';
+        $protocol = ($enc === 'ssl') ? 'smtps' : 'smtp';
         curl_setopt_array($ch, [
             CURLOPT_URL            => "{$protocol}://{$host}:{$port}",
             CURLOPT_MAIL_FROM      => "<{$from}>",
             CURLOPT_MAIL_RCPT      => array_map(fn($d) => "<" . trim($d) . ">", $dests),
             CURLOPT_READDATA       => fopen('data://text/plain,' . urlencode($message), 'r'),
             CURLOPT_UPLOAD         => true,
-            CURLOPT_USERNAME       => $cfg['smtp_username'],
+            CURLOPT_USERNAME       => $cfg['smtp_username'] ?? $cfg['username'] ?? '',
             CURLOPT_PASSWORD       => $pass,
             CURLOPT_USE_SSL        => CURLUSESSL_ALL,
             CURLOPT_SSL_VERIFYPEER => false,
@@ -415,7 +452,6 @@ class EmailManager
         curl_close($ch);
 
         if ($errno !== 0) {
-            // Último recurso: mail() nativo do PHP
             $headers_native  = "From: {$cfg['from_name']} <{$from}>\r\n";
             $headers_native .= "Content-Type: text/html; charset=UTF-8\r\n";
             $headers_native .= "MIME-Version: 1.0\r\n";
@@ -436,15 +472,22 @@ class EmailManager
 
     private function enviarViaOAuth2(array $cfg, $destinatario, string $assunto, string $corpo): array
     {
-        if (empty($cfg['oauth_client_id']) || empty($cfg['oauth_client_secret']) || empty($cfg['oauth_refresh_token'])) {
-            return ['success' => false, 'message' => 'OAuth2 Gmail não configurado. Informe Client ID, Client Secret e Refresh Token.'];
+        if (empty($cfg['oauth_client_id'])) {
+            return ['success' => false, 'message' => 'OAuth2: Client ID não configurado. Acesse Configuração → E-mail → Gmail OAuth2.'];
+        }
+        if (empty($cfg['oauth_client_secret'])) {
+            return ['success' => false, 'message' => 'OAuth2: Client Secret não configurado.'];
+        }
+        if (empty($cfg['oauth_refresh_token'])) {
+            return ['success' => false, 'message' => 'OAuth2: Refresh Token não configurado. Clique em "Autorizar Gmail" para obter o token.'];
         }
 
         // Obter access token válido
-        $access_token = $this->obterAccessToken($cfg);
-        if (!$access_token) {
-            return ['success' => false, 'message' => 'Falha ao obter Access Token do Google. Verifique o Refresh Token.'];
+        $token_result = $this->obterAccessTokenDetalhado($cfg);
+        if (!$token_result['success']) {
+            return ['success' => false, 'message' => 'OAuth2 — Falha ao obter Access Token: ' . $token_result['message']];
         }
+        $access_token = $token_result['access_token'];
 
         $dests = is_array($destinatario) ? $destinatario : [$destinatario];
         $from  = $cfg['oauth_email'] ?: $cfg['from_email'];
@@ -467,7 +510,6 @@ class EmailManager
 
         $raw_b64 = rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
 
-        // Chamar Gmail API
         $ch = curl_init('https://gmail.googleapis.com/gmail/v1/users/me/messages/send');
         curl_setopt_array($ch, [
             CURLOPT_POST           => true,
@@ -481,7 +523,7 @@ class EmailManager
             CURLOPT_SSL_VERIFYPEER => false,
         ]);
 
-        $response = curl_exec($ch);
+        $response  = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curl_err  = curl_error($ch);
         curl_close($ch);
@@ -496,19 +538,36 @@ class EmailManager
             return ['success' => true, 'message' => 'E-mail enviado com sucesso via Gmail OAuth2 (ID: ' . $data['id'] . ')'];
         }
 
-        $err_msg = $data['error']['message'] ?? $response;
-        return ['success' => false, 'message' => "Gmail API HTTP {$http_code}: {$err_msg}"];
+        // Erro detalhado da API do Google
+        $err_code = $data['error']['code'] ?? $http_code;
+        $err_msg  = $data['error']['message'] ?? $response;
+        $err_status = $data['error']['status'] ?? '';
+
+        $msg = "Gmail API HTTP {$err_code}";
+        if ($err_status) $msg .= " ({$err_status})";
+        $msg .= ": {$err_msg}";
+
+        // Dicas por tipo de erro
+        if ($err_code === 401 || $err_status === 'UNAUTHENTICATED') {
+            $msg .= ' — O Refresh Token expirou ou foi revogado. Reautorize na aba Gmail OAuth2.';
+        } elseif ($err_code === 403 || $err_status === 'PERMISSION_DENIED') {
+            $msg .= ' — Permissão negada. Verifique se o escopo "https://mail.google.com/" está habilitado no Google Cloud Console.';
+        } elseif ($err_code === 400) {
+            $msg .= ' — Requisição inválida. Verifique o Client ID e Client Secret.';
+        }
+
+        return ['success' => false, 'message' => $msg];
     }
 
     /**
-     * Obtém um access token válido, renovando via refresh token se necessário.
+     * Obtém um access token válido com retorno detalhado de erro.
      */
-    private function obterAccessToken(array $cfg): ?string
+    private function obterAccessTokenDetalhado(array $cfg): array
     {
         // Verificar se o access token em cache ainda é válido (com 60s de margem)
         if (!empty($cfg['oauth_access_token']) && !empty($cfg['oauth_token_expiry'])) {
             if (strtotime($cfg['oauth_token_expiry']) > (time() + 60)) {
-                return base64_decode($cfg['oauth_access_token']);
+                return ['success' => true, 'access_token' => base64_decode($cfg['oauth_access_token'])];
             }
         }
 
@@ -516,6 +575,10 @@ class EmailManager
         $client_id     = $cfg['oauth_client_id'];
         $client_secret = base64_decode($cfg['oauth_client_secret']);
         $refresh_token = base64_decode($cfg['oauth_refresh_token']);
+
+        if (empty($client_id) || empty($client_secret) || empty($refresh_token)) {
+            return ['success' => false, 'message' => 'Credenciais OAuth2 incompletas (client_id, client_secret ou refresh_token vazio).'];
+        }
 
         $ch = curl_init('https://oauth2.googleapis.com/token');
         curl_setopt_array($ch, [
@@ -533,15 +596,27 @@ class EmailManager
 
         $response  = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_err  = curl_error($ch);
         curl_close($ch);
 
-        if ($http_code !== 200) {
-            return null;
+        if ($curl_err) {
+            return ['success' => false, 'message' => 'Erro de conexão com Google OAuth2: ' . $curl_err];
         }
 
         $data = json_decode($response, true);
-        if (empty($data['access_token'])) {
-            return null;
+
+        if ($http_code !== 200 || empty($data['access_token'])) {
+            $err_type = $data['error'] ?? 'unknown';
+            $err_desc = $data['error_description'] ?? $response;
+            $msg = "Google OAuth2 HTTP {$http_code} — {$err_type}: {$err_desc}";
+
+            if ($err_type === 'invalid_grant') {
+                $msg .= ' — O Refresh Token foi revogado ou expirou. Reautorize clicando em "Autorizar Gmail".';
+            } elseif ($err_type === 'invalid_client') {
+                $msg .= ' — Client ID ou Client Secret incorretos. Verifique no Google Cloud Console.';
+            }
+
+            return ['success' => false, 'message' => $msg];
         }
 
         $access_token = $data['access_token'];
@@ -549,38 +624,57 @@ class EmailManager
         $expiry       = date('Y-m-d H:i:s', time() + $expires_in);
 
         // Salvar no banco para cache
-        $this->conn->prepare("
-            UPDATE smtp_config
-            SET oauth_access_token = ?, oauth_token_expiry = ?
-            WHERE id = ?
-        ")->execute([
-            base64_encode($access_token),
-            $expiry,
-            $cfg['id'],
-        ]);
+        try {
+            $this->conn->prepare("
+                UPDATE smtp_config
+                SET oauth_access_token = ?, oauth_token_expiry = ?
+                WHERE id = ?
+            ")->execute([
+                base64_encode($access_token),
+                $expiry,
+                $cfg['id'],
+            ]);
+        } catch (\Throwable $e) {}
 
-        $this->config = null; // Limpar cache local
+        $this->config = null;
 
-        return $access_token;
+        return ['success' => true, 'access_token' => $access_token];
+    }
+
+    /**
+     * Mantém compatibilidade com código antigo que chama obterAccessToken().
+     */
+    private function obterAccessToken(array $cfg): ?string
+    {
+        $result = $this->obterAccessTokenDetalhado($cfg);
+        return $result['success'] ? $result['access_token'] : null;
     }
 
     /**
      * Troca o código de autorização OAuth2 pelo refresh token.
-     * Chamado uma única vez durante o setup do OAuth2.
      */
     public function trocarCodigoPorToken(string $code, string $redirect_uri): array
     {
         try {
             $cfg = $this->carregarConfig();
         } catch (\RuntimeException $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
+            // Tentar carregar qualquer registro com oauth_client_id
+            $stmt = $this->conn->query(
+                "SELECT * FROM smtp_config
+                  WHERE oauth_client_id IS NOT NULL AND oauth_client_id != ''
+                  ORDER BY updated_at DESC LIMIT 1"
+            );
+            $cfg = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$cfg) {
+                return ['success' => false, 'message' => 'Salve as credenciais OAuth2 (Client ID e Client Secret) antes de autorizar.'];
+            }
         }
 
         $client_id     = $cfg['oauth_client_id'] ?? '';
         $client_secret = base64_decode($cfg['oauth_client_secret'] ?? '');
 
         if (empty($client_id) || empty($client_secret)) {
-            return ['success' => false, 'message' => 'Client ID e Client Secret não configurados.'];
+            return ['success' => false, 'message' => 'Client ID e Client Secret não configurados. Salve as credenciais primeiro.'];
         }
 
         $ch = curl_init('https://oauth2.googleapis.com/token');
@@ -600,33 +694,53 @@ class EmailManager
 
         $response  = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_err  = curl_error($ch);
         curl_close($ch);
+
+        if ($curl_err) {
+            return ['success' => false, 'message' => 'Erro de conexão com Google: ' . $curl_err];
+        }
 
         $data = json_decode($response, true);
 
         if ($http_code !== 200 || empty($data['refresh_token'])) {
-            $err = $data['error_description'] ?? $data['error'] ?? $response;
-            return ['success' => false, 'message' => "Erro ao obter tokens: {$err}"];
+            $err_type = $data['error'] ?? 'unknown';
+            $err_desc = $data['error_description'] ?? $response;
+            $msg = "Erro ao obter tokens (HTTP {$http_code}) — {$err_type}: {$err_desc}";
+
+            if ($err_type === 'invalid_grant') {
+                $msg .= ' — O código de autorização expirou (válido por ~10 minutos) ou já foi usado. Clique em "Autorizar Gmail" novamente.';
+            } elseif ($err_type === 'redirect_uri_mismatch') {
+                $msg .= ' — A URI de redirecionamento não corresponde. Verifique no Google Cloud Console se a URI "' . $redirect_uri . '" está cadastrada.';
+            } elseif (empty($data['refresh_token']) && !empty($data['access_token'])) {
+                $msg = 'Google retornou access_token mas não retornou refresh_token. Isso acontece quando o app já foi autorizado antes. Acesse https://myaccount.google.com/permissions, revogue o acesso ao app e autorize novamente.';
+            }
+
+            return ['success' => false, 'message' => $msg];
         }
 
         // Salvar refresh token e access token
-        $this->conn->prepare("
-            UPDATE smtp_config
-            SET oauth_refresh_token = ?,
-                oauth_access_token  = ?,
-                oauth_token_expiry  = ?,
-                modo                = 'gmail_oauth2'
-            WHERE id = ?
-        ")->execute([
-            base64_encode($data['refresh_token']),
-            base64_encode($data['access_token']),
-            date('Y-m-d H:i:s', time() + intval($data['expires_in'] ?? 3600)),
-            $cfg['id'],
-        ]);
+        try {
+            $this->conn->prepare("
+                UPDATE smtp_config
+                SET oauth_refresh_token = ?,
+                    oauth_access_token  = ?,
+                    oauth_token_expiry  = ?,
+                    modo                = 'gmail_oauth2'
+                WHERE id = ?
+            ")->execute([
+                base64_encode($data['refresh_token']),
+                base64_encode($data['access_token']),
+                date('Y-m-d H:i:s', time() + intval($data['expires_in'] ?? 3600)),
+                $cfg['id'],
+            ]);
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Token obtido mas falha ao salvar no banco: ' . $e->getMessage()];
+        }
 
         $this->config = null;
 
-        return ['success' => true, 'message' => 'Gmail OAuth2 configurado com sucesso! Refresh Token salvo.'];
+        return ['success' => true, 'message' => '✅ Gmail OAuth2 configurado com sucesso! Refresh Token salvo. Você já pode enviar e-mails.'];
     }
 
     /**
@@ -634,14 +748,23 @@ class EmailManager
      */
     public function gerarUrlAutorizacao(string $redirect_uri): string
     {
-        try {
-            $cfg = $this->carregarConfig();
-        } catch (\RuntimeException $e) {
+        // Buscar config OAuth2 mesmo sem refresh token
+        $cfg = $this->carregarConfigPorModo('gmail_oauth2');
+        if (!$cfg) {
+            try {
+                $cfg = $this->carregarConfig();
+            } catch (\RuntimeException $e) {
+                return '';
+            }
+        }
+
+        $client_id = $cfg['oauth_client_id'] ?? '';
+        if (empty($client_id)) {
             return '';
         }
 
         $params = http_build_query([
-            'client_id'     => $cfg['oauth_client_id'] ?? '',
+            'client_id'     => $client_id,
             'redirect_uri'  => $redirect_uri,
             'response_type' => 'code',
             'scope'         => 'https://mail.google.com/',
@@ -656,9 +779,6 @@ class EmailManager
     // ALERTAS
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Carrega a configuração de alertas de um estabelecimento.
-     */
     public function carregarAlertasConfig(int $estab_id): ?array
     {
         $stmt = $this->conn->prepare("SELECT * FROM email_alertas_config WHERE estabelecimento_id = ? LIMIT 1");
@@ -666,9 +786,6 @@ class EmailManager
         return $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
     }
 
-    /**
-     * Salva a configuração de alertas de um estabelecimento.
-     */
     public function salvarAlertasConfig(int $estab_id, array $dados): void
     {
         $existente = $this->carregarAlertasConfig($estab_id);
@@ -715,9 +832,6 @@ class EmailManager
         }
     }
 
-    /**
-     * Verifica se um alerta já foi enviado hoje para evitar duplicatas.
-     */
     public function alertaJaEnviado(int $estab_id, string $tipo, int $ref_id = 0): bool
     {
         $stmt = $this->conn->prepare("
@@ -729,9 +843,6 @@ class EmailManager
         return (bool)$stmt->fetch();
     }
 
-    /**
-     * Registra que um alerta foi enviado hoje.
-     */
     public function marcarAlertaEnviado(int $estab_id, string $tipo, int $ref_id = 0): void
     {
         try {
@@ -739,18 +850,13 @@ class EmailManager
                 INSERT IGNORE INTO email_alertas_enviados (estabelecimento_id, tipo, referencia_id, data_envio)
                 VALUES (?, ?, ?, CURDATE())
             ")->execute([$estab_id, $tipo, $ref_id]);
-        } catch (\PDOException $e) {
-            // Ignorar duplicata
-        }
+        } catch (\PDOException $e) {}
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // LOGS
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Busca os logs de e-mail com filtros opcionais.
-     */
     public function buscarLogs(array $filtros = [], int $limite = 100, int $offset = 0): array
     {
         $where  = ['1=1'];
@@ -793,9 +899,6 @@ class EmailManager
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
-    /**
-     * Conta os logs com os mesmos filtros.
-     */
     public function contarLogs(array $filtros = []): int
     {
         $where  = ['1=1'];
@@ -820,9 +923,6 @@ class EmailManager
         return (int)$stmt->fetchColumn();
     }
 
-    /**
-     * Limpa logs mais antigos que N dias.
-     */
     public function limparLogsAntigos(int $dias = 90): int
     {
         $stmt = $this->conn->prepare("DELETE FROM email_log WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)");
@@ -850,7 +950,7 @@ class EmailManager
             ")->execute([$estab_id, $tipo, $ref_id, $destinatario, $assunto, $corpo]);
             return (int)$this->conn->lastInsertId();
         } catch (\PDOException $e) {
-            return 0; // Tabela pode não existir ainda
+            return 0;
         }
     }
 
@@ -863,9 +963,7 @@ class EmailManager
                 SET status = ?, erro_detalhe = ?, modo_envio = ?, enviado_em = IF(? = 'enviado', NOW(), NULL)
                 WHERE id = ?
             ")->execute([$status, $erro, $modo, $status, $log_id]);
-        } catch (\PDOException $e) {
-            // Ignorar
-        }
+        } catch (\PDOException $e) {}
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -874,9 +972,9 @@ class EmailManager
 
     private function templateTeste(array $cfg, string $modo_label): string
     {
-        $host = htmlspecialchars($cfg['smtp_host'] ?? '');
-        $port = $cfg['smtp_port'] ?? '';
-        $user = htmlspecialchars($cfg['smtp_username'] ?? $cfg['oauth_email'] ?? '');
+        $host = htmlspecialchars($cfg['smtp_host'] ?? $cfg['host'] ?? '');
+        $port = $cfg['smtp_port'] ?? $cfg['port'] ?? '';
+        $user = htmlspecialchars($cfg['smtp_username'] ?? $cfg['username'] ?? $cfg['oauth_email'] ?? '');
         $from = htmlspecialchars($cfg['from_email'] ?? '');
         $data = date('d/m/Y H:i:s');
 

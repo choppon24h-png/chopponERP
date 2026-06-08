@@ -123,13 +123,22 @@ try {
 }
 
 $aba_ativa    = $_GET['aba'] ?? 'smtp';
-$redirect_uri = (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . '/admin/email_config.php?aba=oauth2';
+
+// Redirect URI dedicado para evitar bloqueio do Mod_Security do HostGator
+// O callback vai para oauth2_callback.php (arquivo limpo com .htaccess específico)
+$redirect_uri = 'https://ochoppoficial.com.br/admin/oauth2_callback.php';
 $oauth2_url   = $em->gerarUrlAutorizacao($redirect_uri);
 
-// Processar callback OAuth2 via GET
-if ($aba_ativa === 'oauth2' && !empty($_GET['code'])) {
-    $result_oauth = $em->trocarCodigoPorToken($_GET['code'], $redirect_uri);
-    $result_oauth['success'] ? $success = $result_oauth['message'] : $error = $result_oauth['message'];
+// Mensagens de sessão vindas do oauth2_callback.php
+if (!empty($_SESSION['email_msg'])) {
+    if ($_SESSION['email_tipo'] === 'success') {
+        $success = $_SESSION['email_msg'];
+    } else {
+        $error = $_SESSION['email_msg'];
+    }
+    unset($_SESSION['email_msg'], $_SESSION['email_tipo']);
+    // Recarregar config após autorização bem-sucedida
+    $smtp_config_oauth = $em->carregarConfigPorModo('gmail_oauth2') ?? [];
     try { $smtp_config = $em->carregarConfig(); } catch (\RuntimeException $e) { $smtp_config = []; }
 }
 

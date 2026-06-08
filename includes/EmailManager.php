@@ -745,8 +745,14 @@ class EmailManager
 
     /**
      * Gera a URL de autorização OAuth2 do Google.
+     *
+     * Usa sempre o endpoint dedicado oauth2_callback.php para evitar bloqueio
+     * do Mod_Security do HostGator (o callback limpo não aciona o WAF).
+     * Gera e armazena um state CSRF na sessão para validação no callback.
+     *
+     * @param string|null $redirect_uri Override da redirect_uri (opcional)
      */
-    public function gerarUrlAutorizacao(string $redirect_uri): string
+    public function gerarUrlAutorizacao(?string $redirect_uri = null): string
     {
         // Buscar config OAuth2 mesmo sem refresh token
         $cfg = $this->carregarConfigPorModo('gmail_oauth2');
@@ -763,6 +769,18 @@ class EmailManager
             return '';
         }
 
+        // Usar endpoint dedicado por padrão (evita Mod_Security do HostGator)
+        if (empty($redirect_uri)) {
+            $redirect_uri = 'https://ochoppoficial.com.br/admin/oauth2_callback.php';
+        }
+
+        // Gerar state CSRF e armazenar na sessão
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        $state = bin2hex(random_bytes(16));
+        $_SESSION['oauth2_state'] = $state;
+
         $params = http_build_query([
             'client_id'     => $client_id,
             'redirect_uri'  => $redirect_uri,
@@ -770,6 +788,7 @@ class EmailManager
             'scope'         => 'https://mail.google.com/',
             'access_type'   => 'offline',
             'prompt'        => 'consent',
+            'state'         => $state,
         ]);
 
         return 'https://accounts.google.com/o/oauth2/v2/auth?' . $params;

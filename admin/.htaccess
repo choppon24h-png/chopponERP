@@ -1,0 +1,41 @@
+# HostGator compartilhado — Mod_Security
+# Desabilita regras específicas do WAF apenas para o callback OAuth2 do Google.
+# O parâmetro "code" do OAuth2 contém "/" e "=" que ativam falsos positivos.
+
+<IfModule mod_security2.c>
+    <Files "oauth2_callback.php">
+        # Desabilitar regras de injeção que bloqueiam o code/scope do OAuth2
+        SecRuleRemoveById 981172
+        SecRuleRemoveById 981173
+        SecRuleRemoveById 981243
+        SecRuleRemoveById 981244
+        SecRuleRemoveById 981246
+        SecRuleRemoveById 981248
+        SecRuleRemoveById 981257
+        SecRuleRemoveById 950109
+        SecRuleRemoveById 950907
+        SecRuleRemoveById 959151
+        SecRuleRemoveById 960024
+        SecRuleRemoveById 960335
+        SecRuleRemoveById 973300
+        SecRuleRemoveById 973304
+        SecRuleRemoveById 973306
+        SecRuleRemoveById 973314
+        SecRuleRemoveById 973316
+        SecRuleRemoveById 973332
+        SecRuleRemoveById 973333
+        SecRuleRemoveById 973335
+        SecRuleRemoveById 973338
+        SecRuleRemoveById 973347
+        SecRuleRemoveById 981231
+        SecRuleRemoveById 981260
+    </Files>
+</IfModule>
+
+# Fallback: se mod_security2 não estiver disponível, tenta mod_security (v1)
+<IfModule mod_security.c>
+    <Files "oauth2_callback.php">
+        SecFilterEngine Off
+        SecFilterScanPOST Off
+    </Files>
+</IfModule>

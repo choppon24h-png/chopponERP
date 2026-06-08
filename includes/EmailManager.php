@@ -61,12 +61,74 @@ class EmailManager
     }
 
     /**
+     * Retorna as colunas existentes na tabela smtp_config.
+     */
+    private function colunasSmtpConfig(): array
+    {
+        $rows = $this->conn->query("SHOW COLUMNS FROM smtp_config")->fetchAll(\PDO::FETCH_ASSOC);
+        return array_column($rows, 'Field');
+    }
+
+    /**
+     * Garante que todas as colunas OAuth2 existam na tabela smtp_config.
+     * Executa ALTER TABLE automaticamente se alguma coluna estiver faltando.
+     */
+    private function garantirEstrutura(): void
+    {
+        try {
+            $existentes = $this->colunasSmtpConfig();
+        } catch (\Throwable $e) {
+            return; // Tabela pode não existir ainda
+        }
+
+        $necessarias = [
+            'modo'                => "ADD COLUMN `modo` ENUM('smtp_password','gmail_oauth2') NOT NULL DEFAULT 'smtp_password' AFTER `id`",
+            'smtp_host'           => "ADD COLUMN `smtp_host` VARCHAR(255) NOT NULL DEFAULT 'smtp.gmail.com'",
+            'smtp_port'           => "ADD COLUMN `smtp_port` INT NOT NULL DEFAULT 587",
+            'smtp_secure'         => "ADD COLUMN `smtp_secure` ENUM('tls','ssl','none') NOT NULL DEFAULT 'tls'",
+            'smtp_username'       => "ADD COLUMN `smtp_username` VARCHAR(255) NOT NULL DEFAULT ''",
+            'smtp_password'       => "ADD COLUMN `smtp_password` TEXT NULL DEFAULT NULL",
+            'oauth_client_id'     => "ADD COLUMN `oauth_client_id` VARCHAR(255) NULL DEFAULT NULL",
+            'oauth_client_secret' => "ADD COLUMN `oauth_client_secret` TEXT NULL DEFAULT NULL",
+            'oauth_refresh_token' => "ADD COLUMN `oauth_refresh_token` TEXT NULL DEFAULT NULL",
+            'oauth_access_token'  => "ADD COLUMN `oauth_access_token` TEXT NULL DEFAULT NULL",
+            'oauth_token_expiry'  => "ADD COLUMN `oauth_token_expiry` DATETIME NULL DEFAULT NULL",
+            'oauth_email'         => "ADD COLUMN `oauth_email` VARCHAR(255) NULL DEFAULT NULL",
+            'from_email'          => "ADD COLUMN `from_email` VARCHAR(255) NOT NULL DEFAULT ''",
+            'from_name'           => "ADD COLUMN `from_name` VARCHAR(255) NOT NULL DEFAULT 'Chopp ON'",
+        ];
+
+        foreach ($necessarias as $col => $ddl) {
+            if (!in_array($col, $existentes, true)) {
+                try {
+                    $this->conn->exec("ALTER TABLE `smtp_config` $ddl");
+                } catch (\Throwable $e) {
+                    // Ignora se já existir (race condition)
+                }
+            }
+        }
+
+        // Garantir que smtp_password aceita NULL
+        if (in_array('smtp_password', $existentes, true)) {
+            try {
+                $this->conn->exec("ALTER TABLE `smtp_config` MODIFY COLUMN `smtp_password` TEXT NULL DEFAULT NULL");
+            } catch (\Throwable $e) { /* ignora */ }
+        }
+    }
+
+    /**
      * Salva ou atualiza a configuração SMTP/OAuth2.
      */
     public function salvarConfig(array $dados): void
     {
+        // Garantir que a estrutura da tabela está atualizada
+        $this->garantirEstrutura();
+
         $stmt = $this->conn->query("SELECT id FROM smtp_config LIMIT 1");
         $existe = $stmt->fetch();
+
+        // Obter colunas reais para evitar inserir campos inexistentes
+        $colunasReais = $this->colunasSmtpConfig();
 
         $campos = [
             'modo'         => $dados['modo']         ?? 'smtp_password',
@@ -100,6 +162,9 @@ class EmailManager
         if (!empty($dados['oauth_email'])) {
             $campos['oauth_email'] = $dados['oauth_email'];
         }
+
+        // Filtrar apenas colunas que existem na tabela
+        $campos = array_filter($campos, fn($k) => in_array($k, $colunasReais, true), ARRAY_FILTER_USE_KEY);
 
         if ($existe) {
             $sets   = implode(', ', array_map(fn($k) => "`$k` = ?", array_keys($campos)));

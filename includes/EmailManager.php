@@ -81,6 +81,44 @@ class EmailManager
             return; // Tabela pode não existir ainda
         }
 
+        // ── Passo 1: remover FK e UNIQUE KEY em estabelecimento_id ────────────
+        // A tabela antiga tinha FOREIGN KEY e UNIQUE KEY obrigatórios que
+        // impedem o INSERT sem estabelecimento_id e o MODIFY COLUMN para NULL.
+        try {
+            // Buscar nome da FK
+            $fks = $this->conn->query(
+                "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                  WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = 'smtp_config'
+                    AND COLUMN_NAME = 'estabelecimento_id'
+                    AND REFERENCED_TABLE_NAME IS NOT NULL"
+            )->fetchAll(\PDO::FETCH_COLUMN);
+            foreach ($fks as $fk) {
+                try { $this->conn->exec("ALTER TABLE `smtp_config` DROP FOREIGN KEY `$fk`"); } catch (\Throwable $e) {}
+            }
+            // Remover UNIQUE KEY em estabelecimento_id
+            $uks = $this->conn->query(
+                "SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+                  WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = 'smtp_config'
+                    AND COLUMN_NAME = 'estabelecimento_id'
+                    AND NON_UNIQUE = 0
+                    AND INDEX_NAME != 'PRIMARY'"
+            )->fetchAll(\PDO::FETCH_COLUMN);
+            foreach ($uks as $uk) {
+                try { $this->conn->exec("ALTER TABLE `smtp_config` DROP INDEX `$uk`"); } catch (\Throwable $e) {}
+            }
+        } catch (\Throwable $e) { /* ignora se INFORMATION_SCHEMA não acessível */ }
+
+        // ── Passo 2: tornar estabelecimento_id nullable ───────────────────────
+        try {
+            $this->conn->exec(
+                "ALTER TABLE `smtp_config`
+                 MODIFY COLUMN `estabelecimento_id` BIGINT UNSIGNED NULL DEFAULT NULL"
+            );
+        } catch (\Throwable $e) { /* ignora se já for nullable */ }
+
+        // ── Passo 3: adicionar colunas faltantes ──────────────────────────────
         $necessarias = [
             'modo'                => "ADD COLUMN `modo` ENUM('smtp_password','gmail_oauth2') NOT NULL DEFAULT 'smtp_password' AFTER `id`",
             'smtp_host'           => "ADD COLUMN `smtp_host` VARCHAR(255) NOT NULL DEFAULT 'smtp.gmail.com'",
@@ -98,6 +136,9 @@ class EmailManager
             'from_name'           => "ADD COLUMN `from_name` VARCHAR(255) NOT NULL DEFAULT 'Chopp ON'",
         ];
 
+        // Recarregar colunas após possíveis ALTER TABLE acima
+        try { $existentes = $this->colunasSmtpConfig(); } catch (\Throwable $e) { return; }
+
         foreach ($necessarias as $col => $ddl) {
             if (!in_array($col, $existentes, true)) {
                 try {
@@ -108,12 +149,10 @@ class EmailManager
             }
         }
 
-        // Garantir que smtp_password aceita NULL
-        if (in_array('smtp_password', $existentes, true)) {
-            try {
-                $this->conn->exec("ALTER TABLE `smtp_config` MODIFY COLUMN `smtp_password` TEXT NULL DEFAULT NULL");
-            } catch (\Throwable $e) { /* ignora */ }
-        }
+        // ── Passo 4: garantir smtp_password aceita NULL ───────────────────────
+        try {
+            $this->conn->exec("ALTER TABLE `smtp_config` MODIFY COLUMN `smtp_password` TEXT NULL DEFAULT NULL");
+        } catch (\Throwable $e) { /* ignora */ }
     }
 
     /**
@@ -130,16 +169,24 @@ class EmailManager
         // Obter colunas reais para evitar inserir campos inexistentes
         $colunasReais = $this->colunasSmtpConfig();
 
+        $modo = $dados['modo'] ?? 'smtp_password';
+
         $campos = [
-            'modo'         => $dados['modo']         ?? 'smtp_password',
+            'modo'         => $modo,
             'smtp_host'    => $dados['smtp_host']    ?? 'smtp.gmail.com',
             'smtp_port'    => intval($dados['smtp_port'] ?? 587),
             'smtp_secure'  => $dados['smtp_secure']  ?? 'tls',
             'smtp_username'=> $dados['smtp_username'] ?? '',
-            'from_email'   => $dados['from_email']   ?? '',
             'from_name'    => $dados['from_name']    ?? 'Chopp ON',
             'status'       => 1,
         ];
+
+        // from_email: no modo OAuth2, usar oauth_email como remetente se from_email vazio
+        $from_email = $dados['from_email'] ?? '';
+        if (empty($from_email) && $modo === 'gmail_oauth2' && !empty($dados['oauth_email'])) {
+            $from_email = $dados['oauth_email'];
+        }
+        $campos['from_email'] = $from_email;
 
         // Senha SMTP — só atualiza se preenchida
         if (!empty($dados['smtp_password'])) {

@@ -522,22 +522,46 @@ require_once '../includes/header.php';
 </form>
 
 <?php elseif ($aba_ativa === 'teste'): ?>
-<!-- ══ ABA TESTE ══════════════════════════════════════════════════════════════ -->
+<!-- ══ ABA TESTE ════════════════════════════════════════════════════════════════════════════════════════ -->
 <div class="form-section">
     <h4><i class="fas fa-paper-plane"></i> Enviar E-mail de Teste</h4>
 
     <?php if (empty($smtp_config)): ?>
-        <div class="alert alert-warning">
+        <div class="alert alert-warning" style="margin-bottom:20px;">
             <i class="fas fa-exclamation-triangle"></i>
-            Nenhuma configuração de e-mail ativa. Configure na aba <strong>Configuração SMTP</strong> ou <strong>Gmail OAuth2</strong> antes de testar.
+            <strong>Nenhuma configuração de e-mail ativa.</strong>
+            Configure na aba <a href="?aba=smtp&estabelecimento_id=<?= $estab_id ?>"><strong>Configuração SMTP</strong></a>
+            ou <a href="?aba=oauth2&estabelecimento_id=<?= $estab_id ?>"><strong>Gmail OAuth2</strong></a> antes de testar.
         </div>
+        <!-- Mesmo sem config ativa, mostrar o formulário para facilitar o diagnóstico -->
+        <form method="POST" style="opacity:.6;pointer-events:none;">
+            <input type="hidden" name="action" value="enviar_teste">
+            <input type="hidden" name="estabelecimento_id" value="<?= $estab_id ?>">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>E-mail destinatário para o teste *</label>
+                    <input type="email" name="email_teste" placeholder="seuemail@gmail.com" disabled>
+                    <small>Configure o servidor de e-mail primeiro para habilitar o envio</small>
+                </div>
+            </div>
+            <button type="button" class="btn btn-success" disabled style="font-size:15px;padding:12px 24px;">
+                <i class="fas fa-paper-plane"></i> Enviar E-mail de Teste Agora
+            </button>
+        </form>
     <?php else: ?>
         <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:14px;margin-bottom:20px;">
-            <strong style="color:#166534;">Configuração atual:</strong>
+            <strong style="color:#166534;">Configuração ativa:</strong>
             <span style="color:#374151;font-size:13px;margin-left:8px;">
                 Modo: <strong><?= strtoupper(str_replace('_', ' ', $smtp_config['modo'] ?? 'smtp_password')) ?></strong>
-                | Servidor: <strong><?= htmlspecialchars($smtp_config['smtp_host'] ?? '—') ?>:<?= $smtp_config['smtp_port'] ?? '—' ?></strong>
-                | Remetente: <strong><?= htmlspecialchars($smtp_config['from_email'] ?? '—') ?></strong>
+                <?php if (($smtp_config['modo'] ?? '') === 'gmail_oauth2'): ?>
+                    | Conta Gmail: <strong><?= htmlspecialchars($smtp_config['oauth_email'] ?? $smtp_config['from_email'] ?? '—') ?></strong>
+                    | Token: <strong style="color:<?= !empty($smtp_config['oauth_refresh_token']) ? '#10b981' : '#ef4444' ?>">
+                        <?= !empty($smtp_config['oauth_refresh_token']) ? '✅ Configurado' : '❌ Faltando — autorize na aba OAuth2' ?>
+                    </strong>
+                <?php else: ?>
+                    | Servidor: <strong><?= htmlspecialchars($smtp_config['smtp_host'] ?? '—') ?>:<?= $smtp_config['smtp_port'] ?? '—' ?></strong>
+                    | Remetente: <strong><?= htmlspecialchars($smtp_config['from_email'] ?? '—') ?></strong>
+                <?php endif; ?>
             </span>
         </div>
         <form method="POST">
@@ -545,9 +569,11 @@ require_once '../includes/header.php';
             <input type="hidden" name="estabelecimento_id" value="<?= $estab_id ?>">
             <div class="form-row">
                 <div class="form-group">
-                    <label>E-mail de destino para o teste *</label>
-                    <input type="email" name="email_teste" placeholder="seuemail@gmail.com" required>
-                    <small>O e-mail de teste será enviado para este endereço</small>
+                    <label>E-mail destinatário para o teste *</label>
+                    <input type="email" name="email_teste"
+                           value="<?= htmlspecialchars($_POST['email_teste'] ?? '') ?>"
+                           placeholder="seuemail@gmail.com" required autofocus>
+                    <small>O e-mail de teste será enviado para este endereço. Verifique a caixa de entrada e a pasta de spam.</small>
                 </div>
             </div>
             <button type="submit" class="btn btn-success" style="font-size:15px;padding:12px 24px;">

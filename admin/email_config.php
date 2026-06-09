@@ -361,8 +361,13 @@ require_once '../includes/header.php';
             <h5>Criar projeto no Google Cloud Console</h5>
             <p>Acesse <a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a>,
             crie um projeto, ative a <strong>Gmail API</strong> e crie credenciais OAuth2 do tipo <strong>"Aplicativo da Web"</strong>.
-            Adicione como URI de redirecionamento autorizado:<br>
-            <code><?= htmlspecialchars($redirect_uri) ?></code></p>
+            Adicione como URI de redirecionamento autorizado:</p>
+            <code style="display:block;background:#1e293b;color:#e2e8f0;padding:8px 14px;border-radius:6px;font-size:13px;margin:6px 0;"><?= htmlspecialchars($redirect_uri) ?></code>
+            <p style="margin:6px 0 0;font-size:12px;color:#64748b;">
+                <i class="fas fa-info-circle"></i>
+                O servidor bloqueia o redirecionamento automático (Mod_Security). Por isso o fluxo é manual:
+                o Google redireciona para esta URL, a página pode dar erro, mas o <code>code=</code> fica visível na barra de endereço.
+            </p>
         </div>
     </div>
 
@@ -405,38 +410,68 @@ require_once '../includes/header.php';
         <div class="oauth-step-num <?= !empty($smtp_config_oauth['oauth_refresh_token']) ? 'done' : '' ?>">3</div>
         <div class="oauth-step-content">
             <h5>Autorizar acesso ao Gmail</h5>
-            <p>Clique no botão abaixo para ser redirecionado ao Google e autorizar o acesso. O token será salvo automaticamente.</p>
+
             <?php if (!empty($smtp_config_oauth['oauth_client_id'])): ?>
-                <a href="<?= htmlspecialchars($oauth2_url) ?>" class="btn btn-danger" style="margin-top:10px;">
-                    <i class="fab fa-google"></i> Autorizar Gmail
+
+            <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:14px 16px;margin:10px 0;font-size:13px;color:#856404;">
+                <strong><i class="fas fa-exclamation-triangle"></i> Atenção — Fluxo manual obrigatório</strong><br>
+                O servidor HostGator bloqueia o redirecionamento automático do Google (Mod_Security).
+                Siga os 3 passos abaixo para autorizar:
+            </div>
+
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin:10px 0;">
+                <p style="margin:0 0 10px;font-size:13px;font-weight:600;color:#1e293b;"><i class="fas fa-step-forward" style="color:#3b82f6;"></i> Passo 3a — Abrir o Google para autorizar</p>
+                <a href="<?= htmlspecialchars($oauth2_url) ?>" target="_blank" class="btn btn-danger" style="margin-bottom:10px;">
+                    <i class="fab fa-google"></i> Abrir Google OAuth2 (nova aba)
                 </a>
-                <small style="display:block;margin-top:8px;color:#6b7280;">Você será redirecionado para o Google. Após autorizar, o Refresh Token será salvo automaticamente.</small>
+                <p style="margin:8px 0 0;font-size:12px;color:#64748b;">
+                    Clique no botão acima. O Google vai abrir em uma nova aba. Faça login e autorize o acesso.
+                    Após autorizar, o Google tentará redirecionar para o servidor — a página pode dar erro (isso é normal).
+                </p>
+            </div>
+
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin:10px 0;">
+                <p style="margin:0 0 10px;font-size:13px;font-weight:600;color:#1e293b;"><i class="fas fa-step-forward" style="color:#3b82f6;"></i> Passo 3b — Copiar o código da URL</p>
+                <p style="font-size:13px;color:#374151;margin:0 0 8px;">Na aba que abriu após autorizar, olhe a barra de endereço. A URL terá o formato:</p>
+                <code style="display:block;background:#1e293b;color:#e2e8f0;padding:10px 14px;border-radius:6px;font-size:12px;word-break:break-all;margin-bottom:8px;">
+                    https://ochoppoficial.com.br/oauth2cb.php?state=...&amp;<strong style="color:#fbbf24;">code=4/0AX4XfWh...</strong>&amp;scope=...
+                </code>
+                <p style="font-size:13px;color:#374151;margin:0;">
+                    Copie <strong>apenas o valor após <code>code=</code></strong> até o próximo <code>&amp;</code> (ou até o final da URL).
+                    Exemplo: <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">4/0AX4XfWhABCDEFGH...</code>
+                </p>
+            </div>
+
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin:10px 0;">
+                <p style="margin:0 0 10px;font-size:13px;font-weight:600;color:#1e293b;"><i class="fas fa-step-forward" style="color:#3b82f6;"></i> Passo 3c — Colar o código abaixo e salvar</p>
+
             <?php else: ?>
-                <button class="btn btn-secondary" disabled>Salve as credenciais primeiro</button>
+                <button class="btn btn-secondary" disabled>Salve as credenciais primeiro (passo 2)</button>
             <?php endif; ?>
         </div>
     </div>
 
-    <div class="oauth-step">
-        <div class="oauth-step-num <?= !empty($smtp_config_oauth['oauth_refresh_token']) ? 'done' : '' ?>">4</div>
-        <div class="oauth-step-content">
-            <h5>Ou cole o código de autorização manualmente</h5>
-            <p>Se o redirecionamento automático não funcionar, copie o valor do parâmetro <code>code=</code> da URL de retorno e cole abaixo.</p>
-        </div>
-    </div>
-
+    <?php if (!empty($smtp_config_oauth['oauth_client_id'])): ?>
     <form method="POST" style="margin:0 0 0 48px;">
         <input type="hidden" name="action" value="oauth2_callback">
         <input type="hidden" name="redirect_uri" value="<?= htmlspecialchars($redirect_uri) ?>">
         <input type="hidden" name="estabelecimento_id" value="<?= $estab_id ?>">
         <div class="form-row">
             <div class="form-group" style="grid-column:1/-1;">
-                <label>Código de Autorização (code=...)</label>
-                <input type="text" name="oauth_code" placeholder="4/0AX4XfWh...">
+                <label style="font-weight:600;">Código de Autorização copiado da URL (code=...)</label>
+                <input type="text" name="oauth_code"
+                    placeholder="4/0AX4XfWh..."
+                    style="font-family:monospace;font-size:13px;"
+                    autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                <small style="color:#64748b;">Cole aqui o valor do parâmetro <code>code=</code> copiado da URL de retorno do Google.</small>
             </div>
         </div>
-        <button type="submit" class="btn btn-warning"><i class="fas fa-key"></i> Trocar Código por Token</button>
+        <button type="submit" class="btn btn-success" style="font-size:15px;padding:10px 24px;">
+            <i class="fas fa-key"></i> Salvar Token e Ativar OAuth2
+        </button>
+        </div><!-- fecha passo 3c -->
     </form>
+    <?php endif; ?>
 </div>
 
 <?php elseif ($aba_ativa === 'alertas'): ?>

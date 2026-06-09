@@ -91,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Carregar config por modo específico para os formulários de edição
 $smtp_config_smtp   = $em->carregarConfigPorModo('smtp_password') ?? [];
 $smtp_config_oauth  = $em->carregarConfigPorModo('gmail_oauth2')  ?? [];
-// Config ativa (prioridade OAuth2 com token > OAuth2 sem token > SMTP)
+// Config ativa (prioridade SMTP com senha > OAuth2 com token > qualquer ativo)
 try {
     $smtp_config = $em->carregarConfig();
 } catch (\RuntimeException $e) {
@@ -578,61 +578,119 @@ require_once '../includes/header.php';
 <div class="form-section">
     <h4><i class="fas fa-paper-plane"></i> Enviar E-mail de Teste</h4>
 
-    <?php if (empty($smtp_config)): ?>
+    <?php
+    // Verificar disponibilidade de cada método independentemente
+    $smtp_ativo  = !empty($smtp_config_smtp)
+        && !empty($smtp_config_smtp['smtp_username'])
+        && !empty($smtp_config_smtp['smtp_password'])
+        && ($smtp_config_smtp['status'] ?? 0) == 1;
+
+    $oauth_ativo = !empty($smtp_config_oauth)
+        && !empty($smtp_config_oauth['oauth_refresh_token'])
+        && ($smtp_config_oauth['status'] ?? 0) == 1;
+
+    $algum_ativo = $smtp_ativo || $oauth_ativo;
+    ?>
+
+    <!-- Status dos métodos de envio -->
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;">
+        <!-- SMTP -->
+        <div style="flex:1;min-width:220px;border:1px solid <?= $smtp_ativo ? '#86efac' : '#fca5a5' ?>;border-radius:8px;padding:14px;background:<?= $smtp_ativo ? '#f0fdf4' : '#fff7f7' ?>;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <span style="font-size:18px;"><?= $smtp_ativo ? '✅' : '⚠️' ?></span>
+                <strong style="color:<?= $smtp_ativo ? '#166534' : '#991b1b' ?>;font-size:14px;">SMTP com Senha</strong>
+                <span style="margin-left:auto;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:<?= $smtp_ativo ? '#dcfce7' : '#fee2e2' ?>;color:<?= $smtp_ativo ? '#166534' : '#991b1b' ?>;">
+                    <?= $smtp_ativo ? 'PRIMÁRIO' : 'NÃO CONFIGURADO' ?>
+                </span>
+            </div>
+            <?php if ($smtp_ativo): ?>
+                <div style="font-size:12px;color:#374151;">
+                    <div>Servidor: <strong><?= htmlspecialchars($smtp_config_smtp['smtp_host'] ?? '—') ?>:<?= $smtp_config_smtp['smtp_port'] ?? '—' ?></strong></div>
+                    <div>Usuário: <strong><?= htmlspecialchars($smtp_config_smtp['smtp_username'] ?? '—') ?></strong></div>
+                    <div>Remetente: <strong><?= htmlspecialchars($smtp_config_smtp['from_email'] ?? '—') ?></strong></div>
+                </div>
+            <?php else: ?>
+                <div style="font-size:12px;color:#991b1b;">
+                    <?php if (empty($smtp_config_smtp)): ?>
+                        Nenhuma configuração SMTP salva.
+                    <?php elseif (empty($smtp_config_smtp['smtp_password'])): ?>
+                        Senha não configurada.
+                    <?php else: ?>
+                        Configuração incompleta.
+                    <?php endif; ?>
+                    <a href="?aba=smtp" style="color:#2563eb;">Configurar SMTP →</a>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- OAuth2 -->
+        <div style="flex:1;min-width:220px;border:1px solid <?= $oauth_ativo ? '#93c5fd' : '#d1d5db' ?>;border-radius:8px;padding:14px;background:<?= $oauth_ativo ? '#eff6ff' : '#f9fafb' ?>;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <span style="font-size:18px;"><?= $oauth_ativo ? '✅' : ($smtp_ativo ? '💤' : '⚠️') ?></span>
+                <strong style="color:<?= $oauth_ativo ? '#1e40af' : '#6b7280' ?>;font-size:14px;">Gmail OAuth2</strong>
+                <span style="margin-left:auto;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:<?= $oauth_ativo ? '#dbeafe' : '#e5e7eb' ?>;color:<?= $oauth_ativo ? '#1e40af' : '#6b7280' ?>;">
+                    <?= $oauth_ativo ? ($smtp_ativo ? 'FALLBACK' : 'PRIMÁRIO') : 'NÃO CONFIGURADO' ?>
+                </span>
+            </div>
+            <?php if ($oauth_ativo): ?>
+                <div style="font-size:12px;color:#374151;">
+                    <div>Conta: <strong><?= htmlspecialchars($smtp_config_oauth['oauth_email'] ?? $smtp_config_oauth['from_email'] ?? '—') ?></strong></div>
+                    <div>Token: <strong style="color:#10b981;">✅ Configurado</strong></div>
+                    <?php if ($smtp_ativo): ?>
+                        <div style="color:#6b7280;margin-top:4px;">Usado automaticamente se o SMTP falhar.</div>
+                    <?php endif; ?>
+                </div>
+            <?php else: ?>
+                <div style="font-size:12px;color:#6b7280;">
+                    <?php if (empty($smtp_config_oauth)): ?>
+                        Nenhuma credencial OAuth2 salva.
+                    <?php elseif (empty($smtp_config_oauth['oauth_refresh_token'])): ?>
+                        Refresh Token não obtido. Autorize na aba OAuth2.
+                    <?php else: ?>
+                        Configuração incompleta.
+                    <?php endif; ?>
+                    <a href="?aba=oauth2" style="color:#2563eb;">Configurar OAuth2 →</a>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <?php if (!$algum_ativo): ?>
         <div class="alert alert-warning" style="margin-bottom:20px;">
             <i class="fas fa-exclamation-triangle"></i>
-            <strong>Nenhuma configuração de e-mail ativa.</strong>
-            Configure na aba <a href="?aba=smtp&estabelecimento_id=<?= $estab_id ?>"><strong>Configuração SMTP</strong></a>
-            ou <a href="?aba=oauth2&estabelecimento_id=<?= $estab_id ?>"><strong>Gmail OAuth2</strong></a> antes de testar.
+            <strong>Nenhum método de envio configurado.</strong>
+            Configure <a href="?aba=smtp"><strong>SMTP</strong></a> ou <a href="?aba=oauth2"><strong>Gmail OAuth2</strong></a> antes de testar.
         </div>
-        <!-- Mesmo sem config ativa, mostrar o formulário para facilitar o diagnóstico -->
-        <form method="POST" style="opacity:.6;pointer-events:none;">
-            <input type="hidden" name="action" value="enviar_teste">
-            <input type="hidden" name="estabelecimento_id" value="<?= $estab_id ?>">
-            <div class="form-row">
-                <div class="form-group">
-                    <label>E-mail destinatário para o teste *</label>
-                    <input type="email" name="email_teste" placeholder="seuemail@gmail.com" disabled>
-                    <small>Configure o servidor de e-mail primeiro para habilitar o envio</small>
-                </div>
-            </div>
-            <button type="button" class="btn btn-success" disabled style="font-size:15px;padding:12px 24px;">
-                <i class="fas fa-paper-plane"></i> Enviar E-mail de Teste Agora
-            </button>
-        </form>
-    <?php else: ?>
-        <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:14px;margin-bottom:20px;">
-            <strong style="color:#166534;">Configuração ativa:</strong>
-            <span style="color:#374151;font-size:13px;margin-left:8px;">
-                Modo: <strong><?= strtoupper(str_replace('_', ' ', $smtp_config['modo'] ?? 'smtp_password')) ?></strong>
-                <?php if (($smtp_config['modo'] ?? '') === 'gmail_oauth2'): ?>
-                    | Conta Gmail: <strong><?= htmlspecialchars($smtp_config['oauth_email'] ?? $smtp_config['from_email'] ?? '—') ?></strong>
-                    | Token: <strong style="color:<?= !empty($smtp_config['oauth_refresh_token']) ? '#10b981' : '#ef4444' ?>">
-                        <?= !empty($smtp_config['oauth_refresh_token']) ? '✅ Configurado' : '❌ Faltando — autorize na aba OAuth2' ?>
-                    </strong>
-                <?php else: ?>
-                    | Servidor: <strong><?= htmlspecialchars($smtp_config['smtp_host'] ?? '—') ?>:<?= $smtp_config['smtp_port'] ?? '—' ?></strong>
-                    | Remetente: <strong><?= htmlspecialchars($smtp_config['from_email'] ?? '—') ?></strong>
-                <?php endif; ?>
-            </span>
-        </div>
-        <form method="POST">
-            <input type="hidden" name="action" value="enviar_teste">
-            <input type="hidden" name="estabelecimento_id" value="<?= $estab_id ?>">
-            <div class="form-row">
-                <div class="form-group">
-                    <label>E-mail destinatário para o teste *</label>
-                    <input type="email" name="email_teste"
-                           value="<?= htmlspecialchars($_POST['email_teste'] ?? '') ?>"
-                           placeholder="seuemail@gmail.com" required autofocus>
-                    <small>O e-mail de teste será enviado para este endereço. Verifique a caixa de entrada e a pasta de spam.</small>
-                </div>
-            </div>
-            <button type="submit" class="btn btn-success" style="font-size:15px;padding:12px 24px;">
-                <i class="fas fa-paper-plane"></i> Enviar E-mail de Teste Agora
-            </button>
-        </form>
     <?php endif; ?>
+
+    <form method="POST">
+        <input type="hidden" name="action" value="enviar_teste">
+        <input type="hidden" name="estabelecimento_id" value="<?= $estab_id ?>">
+        <div class="form-row">
+            <div class="form-group">
+                <label>E-mail destinatário para o teste *</label>
+                <input type="email" name="email_teste"
+                       value="<?= htmlspecialchars($_POST['email_teste'] ?? ($smtp_config_smtp['smtp_username'] ?? '')) ?>"
+                       placeholder="seuemail@gmail.com"
+                       <?= !$algum_ativo ? 'disabled' : 'required autofocus' ?>>
+                <small>
+                    <?php if ($smtp_ativo && $oauth_ativo): ?>
+                        O sistema tentará enviar via <strong>SMTP</strong> primeiro. Se falhar, usará <strong>OAuth2</strong> automaticamente.
+                    <?php elseif ($smtp_ativo): ?>
+                        O e-mail será enviado via <strong>SMTP</strong> (<?= htmlspecialchars($smtp_config_smtp['smtp_host'] ?? '') ?>).
+                    <?php elseif ($oauth_ativo): ?>
+                        O e-mail será enviado via <strong>Gmail OAuth2</strong>.
+                    <?php else: ?>
+                        Configure um método de envio primeiro.
+                    <?php endif; ?>
+                </small>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-success" style="font-size:15px;padding:12px 24px;"
+                <?= !$algum_ativo ? 'disabled' : '' ?>>
+            <i class="fas fa-paper-plane"></i> Enviar E-mail de Teste Agora
+        </button>
+    </form>
 </div>
 
 <div class="form-section">

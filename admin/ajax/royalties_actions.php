@@ -32,12 +32,22 @@ try {
         case 'gerar_link':
             $id = intval($_POST['id'] ?? 0);
             if (!$id) throw new Exception('ID inválido');
+            // Verificar permissão: admin geral ou usuário do próprio estabelecimento
+            if (!isAdminGeral()) {
+                $chk = $conn->prepare('SELECT estabelecimento_id FROM royalties WHERE id = ?');
+                $chk->execute([$id]);
+                $row = $chk->fetch(\PDO::FETCH_ASSOC);
+                if (!$row || intval($row['estabelecimento_id']) !== intval(getEstabelecimentoId())) {
+                    throw new Exception('Acesso negado.');
+                }
+            }
             $resultado = $royaltiesManager->gerarPaymentLink($id);
             echo json_encode($resultado);
             break;
 
         // ===== ENVIAR E-MAIL =====
         case 'enviar_email':
+            if (!isAdminGeral()) throw new Exception('Acesso negado.');
             $id = intval($_POST['id'] ?? 0);
             if (!$id) throw new Exception('ID inválido');
             $resultado = $royaltiesManager->enviarEmail($id);
@@ -48,6 +58,15 @@ try {
         case 'gerar_e_enviar':
             $id = intval($_POST['id'] ?? 0);
             if (!$id) throw new Exception('ID inválido');
+            // Verificar permissão: admin geral ou usuário do próprio estabelecimento
+            if (!isAdminGeral()) {
+                $chk = $conn->prepare('SELECT estabelecimento_id FROM royalties WHERE id = ?');
+                $chk->execute([$id]);
+                $row = $chk->fetch(\PDO::FETCH_ASSOC);
+                if (!$row || intval($row['estabelecimento_id']) !== intval(getEstabelecimentoId())) {
+                    throw new Exception('Acesso negado.');
+                }
+            }
             $resultadoLink = $royaltiesManager->gerarPaymentLink($id);
             if (!$resultadoLink['success']) { echo json_encode($resultadoLink); break; }
             $resultadoEmail = $royaltiesManager->enviarEmail($id);
@@ -136,6 +155,7 @@ try {
 
         // ===== CANCELAR ROYALTY =====
         case 'cancelar':
+            if (!isAdminGeral()) throw new Exception('Acesso negado.');
             $id = intval($_POST['id'] ?? 0);
             if (!$id) throw new Exception('ID inválido');
             $stmt = $conn->prepare("UPDATE royalties SET status = 'cancelado', updated_at = NOW() WHERE id = ?");

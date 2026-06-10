@@ -447,8 +447,17 @@ require_once '../includes/header.php';
                                     </button>
                                     <?php endif; ?>
 
-                                    <!-- ══ ESTABELECIMENTO: status pendente — aguardando admin gerar link ══ -->
-                                    <?php if (!isAdminGeral() && $r['status'] === 'pendente'): ?>
+                                    <!-- ══ USUÁRIO DO PRÓPRIO ESTABELECIMENTO: Gerar Link quando pendente ══ -->
+                                    <?php
+                                    $_user_estab_id = getEstabelecimentoId();
+                                    $_e_proprio = !isAdminGeral() && intval($r['estabelecimento_id']) === intval($_user_estab_id);
+                                    ?>
+                                    <?php if ($_e_proprio && $r['status'] === 'pendente'): ?>
+                                    <button class="btn btn-success" onclick="pagarRoyalty(<?= $r['id'] ?>)" title="Gerar Link de Pagamento">
+                                        <i class="fas fa-link"></i> Gerar Link
+                                    </button>
+                                    <?php elseif (!isAdminGeral() && !$_e_proprio && $r['status'] === 'pendente'): ?>
+                                    <!-- Usuário de outro estabelecimento: apenas aguarda -->
                                     <span class="badge bg-warning text-dark" title="Aguardando o administrador gerar o link de pagamento">
                                         <i class="fas fa-hourglass-half"></i> Aguardando Link
                                     </span>
@@ -458,14 +467,14 @@ require_once '../includes/header.php';
                                     <?php
                                     $payment_link_estab = $r['payment_url'] ?? $r['mp_link_pagamento'] ?? $r['boleto_url'] ?? null;
                                     ?>
-                                    <?php if (!isAdminGeral() && in_array($r['status'], ['link_gerado','enviado']) && !empty($payment_link_estab)): ?>
+                                    <?php if (!isAdminGeral() && $_e_proprio && in_array($r['status'], ['link_gerado','enviado']) && !empty($payment_link_estab)): ?>
                                     <a href="<?= htmlspecialchars($payment_link_estab) ?>" target="_blank"
                                        class="btn btn-success btn-sm"
                                        title="Clique para pagar este royalty"
                                        style="font-weight:700; padding:6px 16px;">
                                         <i class="fas fa-credit-card"></i> Pagar
                                     </a>
-                                    <?php elseif (!isAdminGeral() && in_array($r['status'], ['link_gerado','enviado']) && empty($payment_link_estab)): ?>
+                                    <?php elseif (!isAdminGeral() && $_e_proprio && in_array($r['status'], ['link_gerado','enviado']) && empty($payment_link_estab)): ?>
                                     <span class="badge bg-info text-dark" title="Link de pagamento sendo processado">
                                         <i class="fas fa-spinner fa-spin"></i> Processando
                                     </span>
